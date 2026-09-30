@@ -1,0 +1,4 @@
+# Top-level plain-HTTP site on a loopback port (the pattern a tunnel uses).
+:8091 {
+	respond "overlay site ok"
+}

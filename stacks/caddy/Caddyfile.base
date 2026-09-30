@@ -14,3 +14,7 @@
 		abort
 	}
 }
+
+# Extra top-level sites from the private overlay (LOCAL_DIR/caddy/*.caddy),
+# e.g. a plain-HTTP block on a loopback port for a tunnel.
+import extra/*.caddy

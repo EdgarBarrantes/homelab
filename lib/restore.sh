@@ -36,6 +36,106 @@ rs_match() {
   done
 }
 
+RS_META=/var/lib/homelab/backup-meta
+
+# rs_open [snapshot]: check the repository, pick the snapshot (newest, or
+# the given id) and read its config manifest. Sets RS_SID RS_DAY RS_TIME
+# RS_HOST RS_PATHS[] RS_INFO RS_CFG_PATHS[].
+rs_open() {
+  [[ "${BACKUP_TARGET:-none}" != none ]] || die "BACKUP_TARGET=none: point homelab.env at the backups, then ./install.sh --backup"
+  sudo stat "$BACKUP_DIR" >/dev/null 2>&1 || true   # triggers an SMB automount
+  sudo test -f "$BACKUP_DIR/restic-repo/config" || die "no restic repository at $BACKUP_DIR/restic-repo"
+  sudo test -s "$RESTIC_PW" || die "no $RESTIC_PW: ./install.sh --backup asks for the repository's password"
+  info "Reading snapshots in $BACKUP_DIR/restic-repo"
+  local json line pick
+  json="$(rs_restic snapshots --json)" || die "restic can't read the repository (wrong password?)"
+  pick='
+import json, sys
+want = sys.argv[1]
+snaps = json.load(sys.stdin) or []
+if want:
+    snaps = [s for s in snaps if s["id"].startswith(want) or s.get("short_id") == want]
+if not snaps:
+    sys.exit(1)
+s = max(snaps, key=lambda s: s["time"])
+print("\t".join([s["short_id"], s["time"][:10], s["time"][11:16], s["hostname"]] + s["paths"]))
+'
+  line="$(python3 -c "$pick" "${1:-}" <<<"$json")" || die "no matching snapshot (list them: sudo restic -r $BACKUP_DIR/restic-repo snapshots)"
+  IFS=$'\t' read -r RS_SID RS_DAY RS_TIME RS_HOST _ <<<"$line"
+  RS_PATHS=(); IFS=$'\t' read -r -a RS_PATHS <<<"$(cut -f5- <<<"$line")"
+  RS_INFO="$(rs_restic dump "$RS_SID" "$RS_META/info.txt" 2>/dev/null || true)"
+  RS_CFG_PATHS=()
+  local kind p
+  while IFS=$'\t' read -r kind p; do
+    [[ -n "$kind" && "$kind" != root && "$kind" != host ]] && RS_CFG_PATHS+=("$p")
+  done <<<"$RS_INFO"
+  return 0
+}
+
+# The backup may come from another user's home (/home/old/...): move the
+# folder settings to this user's home and make this user the owner.
+rs_rehome_path() {
+  local p="$1"
+  if [[ "$p" =~ ^/home/[^/]+ && "${BASH_REMATCH[0]}" != "$HOME" ]]; then p="$HOME${p#"${BASH_REMATCH[0]}"}"; fi
+  printf '%s' "$p"
+}
+rs_rehome_env() {
+  local k v n
+  env_set "$HOMELAB_ENV" PUID "$(id -u)"
+  env_set "$HOMELAB_ENV" PGID "$(id -g)"
+  for k in PHOTOS_DIR BOOKS_DIR PAPERLESS_CONSUME_DIR LOCAL_DIR; do
+    v="$(env_get "$HOMELAB_ENV" "$k")"; [[ -n "$v" ]] || continue
+    n="$(rs_rehome_path "$v")"
+    [[ "$n" == "$v" ]] || { env_set "$HOMELAB_ENV" "$k" "$n"; warn "$k: $v -> $n (this machine's home)"; }
+  done
+  return 0
+}
+
+# rs_restore_config: put back the config the snapshot's manifest lists
+# (homelab.env, each stack's .env, extras/backup/.env, the private overlay,
+# /etc/cloudflared, Syncthing's identity), skipping anything that already
+# exists here, except homelab.env when RS_OVERWRITE_ENV=1. Saves the Ollama
+# model list to rendered/ollama-models.txt.
+rs_restore_config() {
+  [[ -n "$RS_INFO" ]] || { warn "snapshot $RS_SID has no config manifest (made by an older backup.sh)"; return 1; }
+  info "Restoring config from snapshot $RS_SID ($RS_HOST, $RS_DAY)"
+  local kind p dst s owner
+  while IFS=$'\t' read -r kind p; do
+    case "$kind" in
+      root|host|"") continue ;;
+      homelab_env) dst="$HOMELAB_ENV" ;;
+      stack_env:*) s="${kind#stack_env:}"; [[ -d "$STACKS_DIR/$s" ]] || continue; dst="$STACKS_DIR/$s/.env" ;;
+      backup_env) dst="$ROOT/extras/backup/.env" ;;
+      local_dir) dst="${LOCAL_DIR:-$(rs_rehome_path "$p")}" ;;
+      syncthing) dst="$(rs_rehome_path "$p")" ;;
+      cloudflared) dst="$p" ;;
+      *) continue ;;
+    esac
+    if [[ -e "$dst" && ! ( "$kind" == homelab_env && "${RS_OVERWRITE_ENV:-0}" == 1 ) ]]; then
+      hint "kept existing $dst"; continue
+    fi
+    owner="$(id -u):$(id -g)"
+    [[ "$kind" == cloudflared ]] && owner="0:0"
+    if [[ "$kind" == local_dir || "$kind" == cloudflared ]]; then
+      sudo mkdir -p "$dst"
+      rs_restic restore "$RS_SID:$p" --target "$dst" >/dev/null
+      sudo chown -R "$owner" "$dst"
+    else
+      sudo mkdir -p "$(dirname "$dst")"
+      rs_restic dump "$RS_SID" "$p" | sudo tee "$dst" >/dev/null
+      sudo chown "$owner" "$dst"; sudo chmod 600 "$dst"
+    fi
+    ok "$kind -> $dst"
+    if [[ "$kind" == homelab_env ]]; then
+      [[ "${RS_OVERWRITE_ENV:-0}" == 1 ]] && rs_rehome_env
+      load_config
+    fi
+  done <<<"$RS_INFO"
+  mkdir -p "$RENDER_DIR"
+  rs_restic dump "$RS_SID" "$RS_META/ollama-models.txt" 2>/dev/null > "$RENDER_DIR/ollama-models.txt" || rm -f "$RENDER_DIR/ollama-models.txt"
+  return 0
+}
+
 # rs_upto <YYYY-MM-DD>: from a sorted list of dated files on stdin, the
 # newest dated on or before that day.
 rs_upto() {
@@ -54,7 +154,7 @@ rs_wait_healthy() {
 }
 
 run_restore() {
-  local snap="" date="" only="" dry=0 yes=0
+  local snap="" date="" only="" dry=0 yes=0 cfg_only=0
   RS_MAP=()
   while (($#)); do
     case "$1" in
@@ -64,34 +164,16 @@ run_restore() {
       --map) RS_MAP+=("$2"); shift ;;
       --dry-run) dry=1 ;;
       --yes|-y) yes=1 ;;
-      *) die "usage: lab restore [--snapshot ID] [--date YYYY-MM-DD] [--only a,b] [--map OLD=NEW] [--dry-run] [--yes]" ;;
+      --config) cfg_only=1 ;;
+      *) die "usage: lab restore [--snapshot ID] [--date YYYY-MM-DD] [--only a,b] [--map OLD=NEW] [--config] [--dry-run] [--yes]" ;;
     esac
     shift
   done
 
-  [[ "${BACKUP_TARGET:-none}" != none ]] || die "BACKUP_TARGET=none: point homelab.env at the backups, then ./install.sh --backup"
-  sudo stat "$BACKUP_DIR" >/dev/null 2>&1 || true   # triggers an SMB automount
-  sudo test -f "$BACKUP_DIR/restic-repo/config" || die "no restic repository at $BACKUP_DIR/restic-repo"
-  sudo test -s "$RESTIC_PW" || die "no $RESTIC_PW: ./install.sh --backup asks for the repository's password"
-
-  info "Reading snapshots in $BACKUP_DIR/restic-repo"
-  local json; json="$(rs_restic snapshots --json)" || die "restic can't read the repository (wrong password?)"
-  local line
-  local pick='
-import json, sys
-want = sys.argv[1]
-snaps = json.load(sys.stdin) or []
-if want:
-    snaps = [s for s in snaps if s["id"].startswith(want) or s.get("short_id") == want]
-if not snaps:
-    sys.exit(1)
-s = max(snaps, key=lambda s: s["time"])
-print("\t".join([s["short_id"], s["time"][:10], s["time"][11:16], s["hostname"]] + s["paths"]))
-'
-  line="$(python3 -c "$pick" "$snap" <<<"$json")" || die "no matching snapshot (list them: sudo restic -r $BACKUP_DIR/restic-repo snapshots)"
-  local sid sday stime shost
-  IFS=$'\t' read -r sid sday stime shost rest <<<"$line"
-  local snap_paths=(); IFS=$'\t' read -r -a snap_paths <<<"$(cut -f5- <<<"$line")"
+  rs_open "$snap"
+  local sid="$RS_SID" sday="$RS_DAY" stime="$RS_TIME" shost="$RS_HOST"
+  local snap_paths=("${RS_PATHS[@]}")
+  if ((cfg_only)); then rs_restore_config; return; fi
   date="${date:-$sday}"
 
   # Plan: (stack, kind, source, target)
@@ -133,6 +215,7 @@ print("\t".join([s["short_id"], s["time"][:10], s["time"][11:16], s["hostname"]]
     esac
   done
   for o in "${snap_paths[@]}"; do
+    [[ " ${RS_CFG_PATHS[*]} " == *" $o "* || "$o" == "$RS_META" ]] && continue
     [[ "$used" == *" $o "* ]] || printf '  %-15s %s(in the snapshot, nothing here takes it: %s; use --map %s=/new/path)%s\n' "" "$C_DIM" "$o" "$o" "$C_0"
   done
   say ""

@@ -112,12 +112,11 @@ What the installer does:
 Re-running it is safe: it keeps `homelab.env`, every generated secret and
 all data. `./install.sh --reconfigure` asks the questions again.
 
-**Moving to a new machine?** Install with the same stacks and point the
-backup question at your existing backups: the installer asks for the
-repository's restic password, then `./lab restore --dry-run` shows what
-comes back where and `./lab restore` does it (files, databases, with the
-old paths mapped onto the new machine). See
-[extras/backup](extras/backup/README.md#restoring-or-moving-to-a-new-machine).
+**Lost the machine?** With the backups and the restic password,
+`./install.sh --from-backup //nas/Backup` rebuilds it in one go: settings,
+secrets, the private overlay, every stack and all the data (tested end to
+end in a VM, see [extras/backup](extras/backup/README.md#rebuilding-a-machine-from-its-backups)).
+Moving data into a machine you've already set up: `./lab restore`.
 
 | Option | |
 |---|---|
@@ -131,6 +130,7 @@ old paths mapped onto the new machine). See
 | `--host USER@HOST [--dir PATH]` | Do all of this on another machine over SSH |
 | `--backup` / `--public` | Only (re)install the backup timer / tunnel config |
 | `--uninstall` | Stop containers and remove timers; keeps all data |
+| `--from-backup SOURCE` | Rebuild this machine from its backups (folder or `//server/share`) |
 | `--force` | Continue even if checks fail |
 
 ## Day to day: `lab`
@@ -180,6 +180,8 @@ adjust the files above, `lab enable <name> && lab up <name>`.
   each, including the NVIDIA GPU setup and remote installs.
 - [docs/public-exposure.md](docs/public-exposure.md): the public-links layer
   and the Cloudflare side of it.
+- [docs/private-overlay.md](docs/private-overlay.md): your machine-specific
+  extras (tiles, routes, pages, your real map) in a private folder.
 - [docs/troubleshooting.md](docs/troubleshooting.md): problems that have
   actually happened, and their fixes.
 - [extras/backup](extras/backup/README.md),

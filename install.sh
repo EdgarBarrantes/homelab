@@ -18,6 +18,11 @@
 #   --backup                          only (re)install the backup timer
 #   --public                          only (re)install the tunnel config
 #   --uninstall                       stop containers, remove timers (keeps data)
+#   --from-backup SOURCE              rebuild a machine from its backups: SOURCE
+#                                     is a folder or //server/share (mounted at
+#                                     --mount, default /mnt/backup); restores
+#                                     config, installs, restores data
+#   --snapshot ID                     with --from-backup: that snapshot
 #   --force                           continue even if checks fail
 #   --host USER@HOST [--dir PATH]     remote install (default dir: ~/homelab)
 #   -h, --help
@@ -31,10 +36,11 @@ source "$ROOT/lib/checks.sh"
 source "$ROOT/lib/render.sh"
 source "$ROOT/lib/wizard.sh"
 source "$ROOT/lib/doctor.sh"
+source "$ROOT/lib/restore.sh"
 
 ORIG_ARGS=("$@")
 MODE=install PROFILE="" STACK_LIST="" CONFIG="" RECONF=0 DRY=0 NOSTART=0 FORCE=0
-HOST="" RDIR="homelab"
+HOST="" RDIR="homelab" FROM="" MOUNT=/mnt/backup SNAP=""
 ASSUME_YES=0
 while (($#)); do
   case "$1" in
@@ -49,10 +55,13 @@ while (($#)); do
     --backup) MODE=backup ;;
     --public) MODE=public ;;
     --uninstall) MODE=uninstall ;;
+    --from-backup) MODE=from_backup; FROM="$2"; shift ;;
+    --mount) MOUNT="$2"; shift ;;
+    --snapshot) SNAP="$2"; shift ;;
     --force) FORCE=1 ;;
     --host) HOST="$2"; shift ;;
     --dir) RDIR="$2"; shift ;;
-    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
   shift
@@ -155,6 +164,8 @@ install_backup() {
       || warn "$BACKUP_SMB_SHARE did not mount yet (sudo journalctl -u '$(systemd-escape -p "$BACKUP_DIR").mount')"
   fi
   restic_password || return 0
+  # --from-backup enables the timer only after the data is back.
+  [[ "${NO_TIMER:-0}" == 1 ]] && return 0
   sudo systemctl enable --now homelab-backup.timer
   ok "timer enabled ($BACKUP_SCHEDULE). Run one now: ./lab backup now"
 }
@@ -280,6 +291,54 @@ case "$MODE" in
     ok "removed. Kept: homelab.env, stacks/*/.env, stacks/*/data, your folders, /etc/homelab, backups." ;;
   backup)
     load_config || die "run ./install.sh first"; install_backup ;;
+  from_backup)
+    [[ -n "$FROM" ]] || die "usage: ./install.sh --from-backup <folder or //server/share>"
+    [[ ! -f "$HOMELAB_ENV" || $FORCE == 1 ]] || die "homelab.env exists: --from-backup is for a fresh machine (--force replaces it)"
+    info "Rebuilding from the backups in $FROM"
+    # Docker first: installing it re-runs this script under the new group,
+    # which must happen before homelab.env exists.
+    if ! docker info >/dev/null 2>&1; then
+      command -v docker >/dev/null || { confirm "Docker Engine is needed. Install it (sudo)?" y && fix_docker; }
+      fix_docker_group
+      if [[ -z "${HOMELAB_SG:-}" ]]; then
+        export HOMELAB_SG=1
+        exec sg docker -c "$(printf '%q ' "$0" "${ORIG_ARGS[@]}")"
+      fi
+    fi
+    cp "$ROOT/homelab.env.example" "$HOMELAB_ENV"; chmod 600 "$HOMELAB_ENV"
+    if [[ "$FROM" == //* ]]; then
+      env_set "$HOMELAB_ENV" BACKUP_TARGET smb
+      env_set "$HOMELAB_ENV" BACKUP_SMB_SHARE "$FROM"
+      env_set "$HOMELAB_ENV" BACKUP_DIR "$MOUNT"
+    else
+      env_set "$HOMELAB_ENV" BACKUP_TARGET local
+      env_set "$HOMELAB_ENV" BACKUP_DIR "$(readlink -f "$FROM")"
+    fi
+    env_set "$HOMELAB_ENV" PUID "$(id -u)"; env_set "$HOMELAB_ENV" PGID "$(id -g)"
+    load_config
+    fix_packages
+    NO_TIMER=1 install_backup
+    sudo test -s /etc/homelab/restic-password || die "the backups can't be read without their restic password"
+    RS_OVERWRITE_ENV=1 rs_open "$SNAP"
+    RS_OVERWRITE_ENV=1 rs_restore_config || die "no config in that snapshot: install normally, then ./lab restore"
+    SID="$RS_SID"
+    load_config
+    ok "settings restored: $(echo $STACKS | wc -w) stacks, $DOMAIN (review homelab.env; --reconfigure to change)"
+    checks_and_fixes
+    info "Generating config"; render_all
+    info "Starting stacks (first run pulls images: this can take a while)"
+    "$ROOT/lab" up
+    info "Restoring data from snapshot $SID"
+    "$ROOT/lab" restore --yes --snapshot "$SID"
+    if is_enabled ollama && [[ -s "$RENDER_DIR/ollama-models.txt" ]]; then
+      info "Pulling Ollama models again"
+      while read -r m; do [[ -n "$m" ]] && docker exec ollama ollama pull "$m" >/dev/null && ok "$m"; done < "$RENDER_DIR/ollama-models.txt"
+    fi
+    install_backup
+    install_public
+    link_lab
+    run_doctor || warn "some checks failed: ./lab doctor again in a few minutes"
+    summary ;;
   public)
     load_config || die "run ./install.sh first"; install_public ;;
   install)

@@ -48,7 +48,7 @@ stack_dirs() {
 
 render_caddy() {
   local out="$RENDER_DIR/caddy" s
-  rm -rf "$out.tmp"; mkdir -p "$out.tmp/sites"
+  rm -rf "$out.tmp"; mkdir -p "$out.tmp/sites" "$out.tmp/extra"
   cp "$STACKS_DIR/caddy/Caddyfile.base" "$out.tmp/Caddyfile"
   case "$TLS_MODE" in
     cloudflare) printf 'tls {\n\tdns cloudflare {env.CF_API_TOKEN}\n}\n' > "$out.tmp/tls.conf" ;;
@@ -62,6 +62,14 @@ render_caddy() {
   if [[ -n "${HA_URL:-}" ]]; then
     render_template < "$ROOT/extras/homeassistant/caddy.conf" > "$out.tmp/sites/homeassistant.conf"
   fi
+  # Private overlay: extra routes in the wildcard site, extra top-level sites.
+  local f
+  for f in "${LOCAL_DIR:-/nonexistent}"/caddy/sites/*.conf; do
+    [[ -f "$f" ]] && render_template < "$f" > "$out.tmp/sites/local-$(basename "$f")"
+  done
+  for f in "${LOCAL_DIR:-/nonexistent}"/caddy/*.caddy; do
+    [[ -f "$f" ]] && render_template < "$f" > "$out.tmp/extra/$(basename "$f")"
+  done
   # Swap the whole directory's contents but keep the directory itself: the
   # running container has it bind-mounted.
   mkdir -p "$out"
@@ -74,8 +82,10 @@ render_topology() {
   local out="$RENDER_DIR/topology"
   mkdir -p "$out"
   cp "$ROOT/extras/topology/index.html" "$out/index.html"
-  # Your own map goes in ./topology.md (gitignored); otherwise the example.
-  if [[ -f "$ROOT/topology.md" ]]; then cp "$ROOT/topology.md" "$out/topology.md"
+  # Your own map: LOCAL_DIR/topology.md, or ./topology.md (gitignored);
+  # otherwise the example.
+  if [[ -f "${LOCAL_DIR:-/nonexistent}/topology.md" ]]; then cp "$LOCAL_DIR/topology.md" "$out/topology.md"
+  elif [[ -f "$ROOT/topology.md" ]]; then cp "$ROOT/topology.md" "$out/topology.md"
   else cp "$ROOT/extras/topology/topology.example.md" "$out/topology.md"; fi
 }
 
@@ -108,7 +118,16 @@ render_homepage() {
         body+="$(homepage_items "$ROOT/extras/homeassistant/homepage.yaml")"$'\n'
       fi
     fi
+    f="${LOCAL_DIR:-/nonexistent}/homepage/$g.yaml"
+    [[ -f "$f" ]] && body+="$(homepage_items "$f")"$'\n'
     [[ -n "$body" ]] && out+="- $g:"$'\n'"$body"
+  done
+  # Overlay groups that aren't one of the standard ones go last.
+  for f in "${LOCAL_DIR:-/nonexistent}"/homepage/*.yaml; do
+    [[ -f "$f" ]] || continue
+    g="$(basename "$f" .yaml)"
+    [[ " ${HOMEPAGE_GROUPS[*]} " == *" $g "* ]] && continue
+    out+="- $g:"$'\n'"$(homepage_items "$f")"$'\n'
   done
   printf '%s' "$out" > "$cfg/services.yaml"
 
@@ -152,6 +171,8 @@ render_cloudflared() {
       echo "  - hostname: $pub.$PUBLIC_DOMAIN"
       echo "    service: http://127.0.0.1:$port"
     done
+    # Private overlay: extra ingress entries, same "  - hostname:" format.
+    [[ -f "${LOCAL_DIR:-/nonexistent}/cloudflared.yml" ]] && render_template < "$LOCAL_DIR/cloudflared.yml"
     echo "  - service: http_status:404"
   } > "$out/config.yml"
 }
