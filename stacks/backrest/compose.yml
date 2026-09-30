@@ -19,9 +19,9 @@ services:
       - ./config:/config
       - ./cache:/cache
       - ./tmp:/tmp
-      # Add it in Backrest as a repository at /repos/main, with the password
-      # from /etc/homelab/restic-password.
-      - ${BACKUP_DIR}/restic-repo:/repos/main
+      # Add it in Backrest as repository "${BACKREST_REPO}" at
+      # /repos/${BACKREST_REPO}, password from /etc/homelab/restic-password.
+      - ${BACKUP_DIR}/restic-repo:/repos/${BACKREST_REPO:-main}
     healthcheck:
       test: wget -q -O /dev/null http://localhost:9898/ || exit 1
       start_period: 20s

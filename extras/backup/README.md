@@ -11,7 +11,8 @@ What it backs up, from each enabled stack's `stack.conf`:
 |---|---|---|
 | Postgres (Immich, Paperless) | `pg_dumpall` to dated `.sql.gz` in `db-dumps/` | `BACKUP_RETAIN_DAYS` (14) |
 | Actual Budget | export via its HTTP wrapper, dated `.zip` (needs `ACTUAL_BUDGET_SYNC_ID`) | same |
-| Photos, Paperless media, books, Calibre-Web and Gokapi config | restic snapshots in `restic-repo/`, deduplicated | 7 daily, 4 weekly, 6 monthly |
+| Photos, Paperless media, books, Calibre-Web, Gokapi, Open WebUI and Backrest data | restic snapshots in `restic-repo/`, deduplicated | 7 daily, 4 weekly, 6 monthly (per machine) |
+| Config: `homelab.env`, every `.env`, the private overlay, `/etc/cloudflared`, Syncthing's identity, the Ollama model list | in the same snapshot (the repository is encrypted) | same |
 
 Every Sunday it also reads back 5% of the repository (`restic check
 --read-data-subset=5%`), so restores are tested, not only writes.
@@ -55,6 +56,25 @@ actions:
 and `BACKUP_NOTIFY_URL=http://<ha-lan-ip>:8123/api/webhook/<long-random-id>`.
 Test it: `sudo systemctl start homelab-backup-failed.service`.
 
+## Rebuilding a machine from its backups
+
+When the disk is gone and only the backups and the restic password (from
+your password manager) are left:
+
+```bash
+git clone https://github.com/<you>/homelab.git ~/homelab && cd ~/homelab
+./install.sh --from-backup //192.168.1.1/Backup     # or a local folder
+```
+
+It mounts the backups, asks for the restic password, puts your config back
+from the newest snapshot (`homelab.env`, every `.env`, the private overlay,
+the tunnel credentials, Syncthing's identity; folders under another user's
+home are moved to yours), installs Docker if needed, starts every stack,
+restores the data from that same snapshot, pulls the Ollama models again,
+and only then enables the nightly timer. `--snapshot ID` picks an older
+one. Still by hand afterwards: `tailscale up`, importing the Actual export
+(below) and re-linking the bank in Actual.
+
 ## Restoring (or moving to a new machine)
 
 `./lab restore` brings everything back into the stacks enabled on this
@@ -96,8 +116,13 @@ On a new machine:
    (Files > Import file > Actual), then set its Sync ID with
    `./lab config actual-budget ACTUAL_BUDGET_SYNC_ID`.
 
-Not in the backups (by design): Ollama models (pull again), Homepage and
-Caddy config (generated), Backrest's own settings.
+Config only: `./lab restore --config` puts back the `.env` files, the
+overlay and the rest of the config from a snapshot, skipping anything that
+already exists here.
+
+Not in the backups (by design): Ollama models themselves (the list is;
+`--from-backup` pulls them), Homepage and Caddy config (generated),
+certificates (Caddy gets new ones).
 
 ### By hand
 

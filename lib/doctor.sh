@@ -53,11 +53,21 @@ run_doctor() {
   done
   hosts+=(map)
   [[ -n "${HA_URL:-}" ]] && hosts+=(ha)
+  # host -> is one of its stack's containers still starting?
+  declare -A starting=()
+  for s in $(enabled_stacks); do
+    host="$(stack_meta "$s" HOST)"; [[ -n "$host" ]] || continue
+    for c in $(stack_meta "$s" CONTAINERS); do
+      [[ "$(container_state "$c")" == running/starting ]] && starting[$host]=1
+    done
+  done
   for host in "${hosts[@]}"; do
     code="$(https_status "$host.$DOMAIN")"
     case "$code" in
       2??|3??|401|403) _dok "https://$host.$DOMAIN -> $code" ;;
-      502|503|504) _dbad "https://$host.$DOMAIN -> $code (Caddy up, app not answering)" ;;
+      502|503|504)
+        if [[ -n "${starting[$host]:-}" ]]; then _dwarn "https://$host.$DOMAIN -> $code (app still starting)"
+        else _dbad "https://$host.$DOMAIN -> $code (Caddy up, app not answering)"; fi ;;
       000|"") _dbad "https://$host.$DOMAIN -> no answer / TLS error" "./lab logs caddy" ;;
       *) _dwarn "https://$host.$DOMAIN -> $code" ;;
     esac

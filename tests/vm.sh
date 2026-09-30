@@ -8,9 +8,10 @@
 #   tests/vm.sh verify    lab doctor + HTTPS from the host + a backup run
 #   tests/vm.sh rerun     install again (must be idempotent)
 #   tests/vm.sh restore   back up, wipe to a "new machine", lab restore, check
+#   tests/vm.sh rebuild   wipe everything but the backups, install.sh --from-backup
 #   tests/vm.sh ssh       shell in the VM
 #   tests/vm.sh down      delete the VM
-#   tests/vm.sh all       up, install, verify, rerun, verify, restore
+#   tests/vm.sh all       up, install, verify, rerun, verify, restore, rebuild
 #
 # Needs: incus (user in incus-admin), KVM. VM name: $VM (default homelab-test).
 set -euo pipefail
@@ -66,7 +67,13 @@ packages: [openssh-server]
 install() {
   log "installing via ./install.sh --host"
   local ip; ip="$(vm_ip)"; [[ -n "$ip" ]] || { echo "no VM address"; exit 1; }
-  timeout --foreground 45m "$ROOT/install.sh" --host "ubuntu@$ip" --config "$HERE/vm.env" --yes
+  # The private overlay fixture lives outside the repo, like a real one.
+  tar -C "$HERE/fixtures/overlay" -cf - . | ssh_vm 'mkdir -p ~/overlay && tar -xf - -C ~/overlay'
+  # The test config only on the first install: later tests change it on
+  # purpose (restore-test moves the photos), and a rerun must keep that.
+  local cfg=(--config "$HERE/vm.env")
+  ssh_vm 'test -f homelab/homelab.env' && cfg=()
+  timeout --foreground 45m "$ROOT/install.sh" --host "ubuntu@$ip" "${cfg[@]}" --yes
 }
 
 verify() {
@@ -76,12 +83,22 @@ verify() {
   log "HTTPS from the host through the VM's Caddy (internal CA)"
   ssh_vm 'cat homelab/rendered/caddy-local-ca.crt' > "$STATE/ca.crt"
   local h code fails=0
-  for h in dash photos docs budget files books backrest glances map; do
+  for h in dash photos docs budget files books backrest glances map hello; do
     code="$(curl -s -o /dev/null -m 20 -w '%{http_code}' --cacert "$STATE/ca.crt" \
       --resolve "$h.homelab.internal:443:$ip" "https://$h.homelab.internal/" || true)"
     printf '  %-12s %s\n' "$h" "$code"
     [[ "$code" =~ ^(2|3)..$|^40[13]$ ]] || fails=$((fails + 1))
   done
+  log "private overlay"
+  local body
+  body="$(curl -s -m 10 --cacert "$STATE/ca.crt" --resolve "hello.homelab.internal:443:$ip" https://hello.homelab.internal/)"
+  [[ "$body" == "overlay route ok" ]] && echo "  route: ok" || { echo "  route: '$body'"; fails=$((fails + 1)); }
+  ssh_vm 'curl -s -m 5 http://127.0.0.1:8091/' | grep -q 'overlay site ok' && echo "  top-level site + compose override: ok" || { echo "  top-level site: FAIL"; fails=$((fails + 1)); }
+  ssh_vm 'grep -q "Overlay Tile" homelab/stacks/homepage/config/services.yaml && grep -q "^- Custom:" homelab/stacks/homepage/config/services.yaml' \
+    && echo "  dashboard tiles: ok" || { echo "  dashboard tiles: FAIL"; fails=$((fails + 1)); }
+  curl -s -m 10 --cacert "$STATE/ca.crt" --resolve "map.homelab.internal:443:$ip" https://map.homelab.internal/topology.md | grep -q overlay-marker \
+    && echo "  map: ok" || { echo "  map: FAIL"; fails=$((fails + 1)); }
+  ssh_vm 'grep -q "extra.example.test" homelab/rendered/cloudflared/config.yml' && echo "  tunnel entry: ok" || { echo "  tunnel entry: FAIL"; fails=$((fails + 1)); }
   log "backup run"
   ssh_vm 'sudo systemctl start homelab-backup.service; systemctl show homelab-backup.service -p Result --value; sudo tail -n 8 /var/log/homelab-backup.log; sudo ls /srv/backup /srv/backup/db-dumps'
   ((fails == 0)) || { echo "$fails route(s) failed"; exit 1; }
@@ -96,8 +113,11 @@ case "${1:-all}" in
   verify) verify ;;
   rerun) install ;;
   restore) log "restore test (in the VM)"; ssh_vm -t 'cd homelab && tests/restore-test.sh' ;;
+  rebuild) log "rebuild from backups (in the VM)"; ssh_vm -t 'bash homelab/tests/rebuild-test.sh' ;;
   ssh) ssh_vm -t 'cd homelab 2>/dev/null; exec bash -l' ;;
   down) down ;;
-  all) up; install; verify; install; verify; ssh_vm -t 'cd homelab && tests/restore-test.sh' ;;
-  *) sed -n '2,16p' "$0"; exit 1 ;;
+  all) up; install; verify; install; verify
+       ssh_vm -t 'cd homelab && tests/restore-test.sh'
+       ssh_vm -t 'bash homelab/tests/rebuild-test.sh' ;;
+  *) sed -n '2,17p' "$0"; exit 1 ;;
 esac

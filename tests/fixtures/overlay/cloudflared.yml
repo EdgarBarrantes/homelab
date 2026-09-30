@@ -1,0 +1,2 @@
+  - hostname: extra.${PUBLIC_DOMAIN}
+    service: http://127.0.0.1:8091

@@ -173,6 +173,11 @@ check_features() {
       is_enabled "$n" || { _bad "PAPERLESS_AI=yes needs the $n stack"; bad=1; }
     done
   fi
+  if [[ -n "${LOCAL_DIR:-}" ]]; then
+    if [[ "$LOCAL_DIR" != /* ]]; then _bad "LOCAL_DIR must be an absolute path (no ~): $LOCAL_DIR"
+    elif [[ -d "$LOCAL_DIR" ]]; then _ok "private overlay: $LOCAL_DIR"
+    else _warn "LOCAL_DIR doesn't exist yet: $LOCAL_DIR"; fi
+  fi
   if is_enabled backrest && [[ "${BACKUP_TARGET:-none}" == none ]]; then
     _warn "backrest is enabled but BACKUP_TARGET=none (nothing to browse)"
   fi

@@ -1,4 +1,4 @@
 Backrest (https://backrest.${DOMAIN}): set instance ID "${HOMELAB_NAME}", add a
-  repository at /repos/main (password: sudo cat /etc/homelab/restic-password),
+  repository "${BACKREST_REPO}" at /repos/${BACKREST_REPO} (password: sudo cat /etc/homelab/restic-password),
   disable its prune/check schedules, and add a plan "${HOMELAB_NAME}-nightly"
   with schedule Disabled so nightly snapshots show on its dashboard.

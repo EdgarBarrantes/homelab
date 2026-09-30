@@ -94,6 +94,30 @@ fi
 log "Pruning dumps older than $BACKUP_RETAIN_DAYS days..."
 find "$DB_DUMP_DIR" -type f -mtime "+$BACKUP_RETAIN_DAYS" -delete
 
+# Config and secrets, so a new machine comes back with the same settings
+# (install.sh --from-backup). Small, and the restic repo is encrypted.
+# info.txt labels each path for the restore.
+META=/var/lib/homelab/backup-meta
+mkdir -p "$META"
+{
+    printf 'root\t%s\nhost\t%s\n' "$ROOT" "$(hostname)"
+    add_cfg() { [ -e "$2" ] && printf '%s\t%s\n' "$1" "$(readlink -f "$2")"; return 0; }
+    add_cfg homelab_env "$ROOT/homelab.env"
+    for f in "$ROOT"/stacks/*/.env; do add_cfg "stack_env:$(basename "$(dirname "$f")")" "$f"; done
+    add_cfg backup_env "$ROOT/extras/backup/.env"
+    [ -n "${LOCAL_DIR:-}" ] && add_cfg local_dir "$LOCAL_DIR"
+    add_cfg cloudflared /etc/cloudflared
+    home="$(getent passwd "$PUID" | cut -d: -f6)"
+    for f in config.xml cert.pem key.pem; do add_cfg syncthing "$home/.local/state/syncthing/$f"; done
+} > "$META/info.txt"
+if running ollama; then
+    docker exec ollama ollama list 2>/dev/null | awk 'NR > 1 { print $1 }' > "$META/ollama-models.txt" || true
+fi
+paths+=("$META")
+while IFS=$'\t' read -r kind p; do
+    case "$kind" in root|host) ;; *) paths+=("$p") ;; esac
+done < "$META/info.txt"
+
 if [ "${#paths[@]}" -gt 0 ]; then
     if [ ! -f "$RESTIC_REPO/config" ]; then
         log "Initialising restic repository..."
@@ -110,7 +134,9 @@ if [ "${#paths[@]}" -gt 0 ]; then
         --tag "plan:$HOMELAB_NAME-nightly" --tag "created-by:$HOMELAB_NAME"
 
     log "Pruning old restic snapshots..."
-    retry restic -r "$RESTIC_REPO" forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
+    # Grouped by host and tags, not paths: a moved folder stays one series.
+    retry restic -r "$RESTIC_REPO" forget --group-by host,tags \
+        --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
 
     # Weekly, read back 5% of the data: proves restores work, not just writes.
     if [ "$(date +%u)" = 7 ]; then
@@ -122,7 +148,7 @@ if [ "${#paths[@]}" -gt 0 ]; then
     if running backrest; then
         docker exec backrest wget -q -O /dev/null \
             --header 'Content-Type: application/json' \
-            --post-data '{"repoId":"main","task":"TASK_INDEX_SNAPSHOTS"}' \
+            --post-data "{\"repoId\":\"${BACKREST_REPO:-main}\",\"task\":\"TASK_INDEX_SNAPSHOTS\"}" \
             http://localhost:9898/v1.Backrest/DoRepoTask \
             || log "WARN: Backrest index request failed"
     fi

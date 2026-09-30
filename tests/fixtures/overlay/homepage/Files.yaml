@@ -1,0 +1,4 @@
+- Overlay Tile:
+    icon: mdi-test-tube
+    href: https://hello.${DOMAIN}
+    description: Extra tile from the overlay

@@ -1,0 +1,4 @@
+- Custom Group Tile:
+    icon: mdi-star
+    href: https://example.com
+    description: A group only the overlay has

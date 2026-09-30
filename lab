@@ -58,6 +58,11 @@ dc() {
       is_yes "${!var:-no}" && files+=(-f "$dir/$f")
     fi
   done
+  # Private overlay: extra compose files for this stack (use ${LOCAL_DIR}
+  # for paths inside them; relative paths resolve against the stack).
+  for f in "${LOCAL_DIR:-/nonexistent}/stacks/$s"/*.yml; do
+    [[ -f "$f" ]] && files+=(-f "$f")
+  done
   [[ -f "$dir/.env" ]] && envs+=(--env-file "$dir/.env")
   docker compose --project-directory "$dir" "${envs[@]}" "${files[@]}" "$@"
 }
