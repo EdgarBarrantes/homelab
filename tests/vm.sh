@@ -69,7 +69,11 @@ install() {
   local ip; ip="$(vm_ip)"; [[ -n "$ip" ]] || { echo "no VM address"; exit 1; }
   # The private overlay fixture lives outside the repo, like a real one.
   tar -C "$HERE/fixtures/overlay" -cf - . | ssh_vm 'mkdir -p ~/overlay && tar -xf - -C ~/overlay'
-  timeout --foreground 45m "$ROOT/install.sh" --host "ubuntu@$ip" --config "$HERE/vm.env" --yes
+  # The test config only on the first install: later tests change it on
+  # purpose (restore-test moves the photos), and a rerun must keep that.
+  local cfg=(--config "$HERE/vm.env")
+  ssh_vm 'test -f homelab/homelab.env' && cfg=()
+  timeout --foreground 45m "$ROOT/install.sh" --host "ubuntu@$ip" "${cfg[@]}" --yes
 }
 
 verify() {

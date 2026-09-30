@@ -27,8 +27,13 @@ wait_healthy() {
 
 step "seed data and back up"
 wait_healthy paperless_webserver
-pl_pw="$(env_get stacks/paperless-ngx/.env PAPERLESS_ADMIN_PASSWORD)"
-URL_PATH=/api/tags/ https docs -o /dev/null -u "admin:$pl_pw" -d name=rebuild-marker
+# Through Paperless's own shell: the admin password in .env needn't match
+# the database (an earlier restore test brings back an older one).
+pl_tags() { docker exec paperless_webserver python3 manage.py shell -c \
+  'from documents.models import Tag; print(" ".join(sorted(Tag.objects.values_list("name", flat=True))))' 2>/dev/null | tail -n 1; }
+docker exec paperless_webserver python3 manage.py shell -c \
+  'from documents.models import Tag; Tag.objects.get_or_create(name="rebuild-marker")' >/dev/null 2>&1
+[[ " $(pl_tags) " == *" rebuild-marker "* ]] || fail "could not seed the Paperless tag"
 echo "rebuild marker" | sudo tee "$PHOTOS_DIR/rebuild-marker.txt" >/dev/null
 env_sums="$(cat stacks/*/.env | sha256sum)"
 stacks_before="$STACKS"
@@ -75,8 +80,7 @@ wait_healthy paperless_webserver
 code="$(URL_PATH=/api/auth/login https photos -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
   -d '{"email":"restore@test.local","password":"RestoreTest123"}')"
 [[ "$code" == 201 ]] || fail "Immich login: $code"
-tags="$(URL_PATH='/api/tags/?name__iexact=rebuild-marker' https docs -u "admin:$pl_pw")"
-[[ "$tags" == *'"count":1'* ]] || fail "Paperless tag missing"
+[[ " $(pl_tags) " == *" rebuild-marker "* ]] || fail "Paperless tag missing"
 [[ "$(sudo cat "$PHOTOS_DIR/rebuild-marker.txt")" == "rebuild marker" ]] || fail "photo marker"
 echo "data: Immich user, Paperless tag and photos are back"
 systemctl is-active --quiet homelab-backup.timer || fail "backup timer not re-enabled"

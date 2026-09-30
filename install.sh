@@ -327,7 +327,7 @@ case "$MODE" in
     checks_and_fixes
     info "Generating config"; render_all
     info "Starting stacks (first run pulls images: this can take a while)"
-    "$ROOT/lab" up
+    "$ROOT/lab" up || { warn "starting failed (a network hiccup while pulling?): trying once more"; "$ROOT/lab" up; }
     info "Restoring data from snapshot $SID"
     "$ROOT/lab" restore --yes --snapshot "$SID"
     if is_enabled ollama && [[ -s "$RENDER_DIR/ollama-models.txt" ]]; then
@@ -353,7 +353,7 @@ case "$MODE" in
     fi
     if ((NOSTART == 0)); then
       info "Starting stacks (first run pulls images: this can take a while)"
-      "$ROOT/lab" up
+      "$ROOT/lab" up || { warn "starting failed (a network hiccup while pulling?): trying once more"; "$ROOT/lab" up; }
     fi
     install_backup
     install_public
