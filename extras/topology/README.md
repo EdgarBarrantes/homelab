@@ -8,3 +8,9 @@ nodes and edges in a small markdown schema (documented at the top of the
 file); `index.html` renders it. To map your own setup, copy the example to
 `topology.md` in the repo root (gitignored, it will describe your network)
 and edit it; `./lab render` publishes it. No build step.
+
+![Topology map](../../docs/images/topology-map.jpg)
+
+To regenerate the screenshots: serve this folder with the example as
+`topology.md` and capture it headlessly once `window.topologyReady` is
+true (set after the layout settles and fits the view).

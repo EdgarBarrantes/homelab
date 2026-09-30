@@ -201,6 +201,8 @@ header > *{pointer-events:auto;}
 .node.hi circle{filter:drop-shadow(0 0 7px currentColor);}
 .edge{fill:none;}
 .edge.dim{opacity:.06;}
+.node.fade{opacity:.18;}
+.edge.fade{opacity:.05;}
 .edge-pipeline{stroke-dasharray:5 4; animation:flow 1.4s linear infinite;}
 @media (prefers-reduced-motion:reduce){ .edge-pipeline{animation:none;} }
 @keyframes flow{ to{ stroke-dashoffset:-18; } }
@@ -236,7 +238,7 @@ header > *{pointer-events:auto;}
 <header>
   <div class="brand">
     <h1><span class="dot"></span>homelab <span style="color:var(--text-faint);font-weight:400;">/ topology</span></h1>
-    <p>What's actually deployed and how it talks to itself &mdash; not a live status feed. See CLAUDE.md in the repo for the source of truth.</p>
+    <p>Every device, service and connection in this setup. A map, not a live status feed: edit topology.md to change it.</p>
   </div>
   <div class="search">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -430,17 +432,19 @@ function size(){ return {w: window.innerWidth, h: window.innerHeight}; }
 var sim = d3.forceSimulation(nodes)
   .force("link", d3.forceLink(edges).id(function(d){return d.id;})
     .distance(function(d){
-      if(d.type==="internal") return 46;
-      if(d.type==="pipeline") return 95;
-      if(d.type==="mesh") return 130;
-      return 78;
+      if(d.type==="internal") return 70;
+      if(d.type==="pipeline") return 135;
+      if(d.type==="mesh") return 170;
+      return 115;
     })
     .strength(function(d){ return d.type==="internal" ? 0.9 : 0.35; }))
-  .force("charge", d3.forceManyBody().strength(-260).distanceMax(480))
-  .force("collide", d3.forceCollide().radius(function(d){ return d.r + 22; }).iterations(2))
+  .force("charge", d3.forceManyBody().strength(-620).distanceMax(900))
+  // Room for the label under each node, not just the circle.
+  .force("collide", d3.forceCollide().radius(function(d){ return d.r + 40; }).iterations(3))
   .force("center", d3.forceCenter(0,0))
-  .force("x", d3.forceX(0).strength(0.02))
-  .force("y", d3.forceY(0).strength(0.02));
+  // Pulled in harder vertically than horizontally: screens are wide.
+  .force("x", d3.forceX(0).strength(0.012))
+  .force("y", d3.forceY(0).strength(0.07));
 
 var link = linkLayer.selectAll("path").data(edges).join("path")
   .attr("class", function(d){ return "edge " + (EDGE_STYLES[d.type].cls || ""); })
@@ -504,6 +508,25 @@ function centerView(){
 centerView();
 window.addEventListener("resize", centerView);
 
+// Once the layout first settles, zoom so the whole graph fits below the
+// header and clear of the legend. Only once: never fight the user's zoom.
+function fitView(ms){
+  var s = size(), pad = 70, top = 130, left = s.w > 900 ? 270 : 0;
+  var x0 = d3.min(nodes, function(n){ return n.x - n.r; }), x1 = d3.max(nodes, function(n){ return n.x + n.r; });
+  var y0 = d3.min(nodes, function(n){ return n.y - n.r; }), y1 = d3.max(nodes, function(n){ return n.y + n.r + 34; });
+  var k = Math.min((s.w - left - 2*pad) / (x1 - x0), (s.h - top - pad) / (y1 - y0), 1.6);
+  k = Math.max(0.35, k);
+  var cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  var t = d3.zoomIdentity.translate(left/2 - k*cx, (top - pad)/2 - k*cy + 10).scale(k);
+  svg.transition().duration(ms).call(zoom.transform, t);
+}
+var fitted = false;
+sim.on("end.fit", function(){
+  if(fitted) return;
+  fitted = true; fitView(700);
+  setTimeout(function(){ window.topologyReady = true; }, 750);  // for screenshot scripts
+});
+
 // ---------------------------------------------------------------- filtering / search
 var byId = {}; nodes.forEach(function(n){ byId[n.id]=n; });
 var neighbors = {}; nodes.forEach(function(n){ neighbors[n.id] = new Set([n.id]); });
@@ -538,6 +561,9 @@ var panelBody = document.getElementById("panel-body");
 
 function openPanel(d){
   node.classed("hi", function(n){ return n.id===d.id; });
+  // Focus: fade everything not directly connected to the selected node.
+  node.classed("fade", function(n){ return !neighbors[d.id].has(n.id); });
+  link.classed("fade", function(e){ return (e.source.id||e.source)!==d.id && (e.target.id||e.target)!==d.id; });
   var linked = edges.filter(function(e){ return (e.source.id||e.source)===d.id || (e.target.id||e.target)===d.id; });
   var rows = linked.map(function(e){
     var s = e.source.id||e.source, t = e.target.id||e.target;
@@ -564,7 +590,7 @@ function openPanel(d){
   });
 }
 document.getElementById("panel-close").addEventListener("click", closePanel);
-function closePanel(){ panel.dataset.open="false"; node.classed("hi", false); }
+function closePanel(){ panel.dataset.open="false"; node.classed("hi", false).classed("fade", false); link.classed("fade", false); }
 svg.on("click", closePanel);
 
 } // end init()

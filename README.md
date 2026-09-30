@@ -14,6 +14,9 @@ itself.
 > what I need. Issues and ideas are welcome; just set expectations
 > accordingly.
 
+![The topology map: every device, service and connection, colour-coded by role](docs/images/topology-map.jpg)
+<sub>The built-in topology map (`map.` hostname) with the example data: private routes in blue, public tunnel in orange, pipelines in purple, backups in teal.</sub>
+
 ## What you get
 
 | Stack | What it is | Address | Profile |
@@ -42,6 +45,12 @@ its voice assistant).
  your devices ──Tailscale──▶ *.home.example.com ──▶ Caddy ──▶ each app       (private)
  anyone ──▶ share./send.example.com ──▶ Cloudflare Tunnel ──▶ one app port   (public)
 ```
+
+Click any node on the map to see what it does and what it talks to; here,
+the document pipeline: a phone scan lands in Paperless, Ollama summarises
+it, and receipts flow on to Actual Budget.
+
+![Map with Paperless selected: its connections highlighted, details in the side panel](docs/images/topology-map-detail.jpg)
 
 - **Private by default.** Every web UI is `<name>.home.example.com`. A
   wildcard DNS record points at the server's **Tailscale** IP, so these
