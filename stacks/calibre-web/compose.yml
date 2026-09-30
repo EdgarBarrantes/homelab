@@ -1,0 +1,32 @@
+name: calibre-web
+
+# Web UI for a Calibre library (read in the browser, download,
+# send-to-ereader, OPDS for reader apps). Calibre desktop can share the same
+# folder, just not while both are writing (metadata.db is SQLite).
+# Settings live in ./config/app.db. First login: admin / admin123, change it.
+services:
+  calibre-web:
+    image: lscr.io/linuxserver/calibre-web:0.6.27
+    container_name: calibre-web
+    restart: unless-stopped
+    networks: [default, proxy]
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      # Real Calibre binaries for format conversion and send-to-ereader. In
+      # Admin -> Basic Configuration -> External binaries, set /usr/bin.
+      DOCKER_MODS: linuxserver/mods:universal-calibre-v9.15.0
+    volumes:
+      - ./config:/config
+      - ${BOOKS_DIR}:/books
+    healthcheck:
+      test: curl -fs -o /dev/null http://localhost:8083/ || exit 1
+      start_period: 60s # the Calibre mod install makes first boot slow
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  proxy:
+    external: true

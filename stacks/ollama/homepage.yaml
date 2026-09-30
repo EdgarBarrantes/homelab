@@ -1,0 +1,5 @@
+- Open WebUI:
+    icon: open-webui.png
+    href: https://ai.${DOMAIN}
+    siteMonitor: https://ai.${DOMAIN}
+    description: Local LLM chat + API

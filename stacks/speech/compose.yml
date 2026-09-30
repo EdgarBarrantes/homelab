@@ -1,0 +1,64 @@
+name: speech
+
+# Local speech-to-text (faster-whisper) and text-to-speech (Kokoro):
+#   - OpenAI-compatible HTTP API at speech.$DOMAIN (phone, Open WebUI, scripts)
+#   - a Wyoming bridge on LAN_BIND:10300 for Home Assistant's voice pipeline
+# CPU only on purpose, leaving the GPU to Ollama. Models (~2 GB) download on
+# first start into ./data (created by install.sh, the container runs as uid 1000).
+services:
+  speaches:
+    image: ghcr.io/speaches-ai/speaches:0.9.0-rc.3-cpu
+    container_name: speaches
+    restart: unless-stopped
+    labels:
+      lab.tier: heavy
+    networks: [default, proxy]
+    environment:
+      TZ: ${TZ}
+      LOG_LEVEL: info
+      # small.en: fast, for voice commands. distil-large-v3: accurate, for
+      # dictation. Kokoro: natural English TTS, light on CPU.
+      PRELOAD_MODELS: '["Systran/faster-whisper-small.en", "Systran/faster-distil-whisper-large-v3", "speaches-ai/Kokoro-82M-v1.0-ONNX"]'
+      WHISPER__INFERENCE_DEVICE: cpu
+      WHISPER__COMPUTE_TYPE: int8
+      STT_MODEL_TTL: -1
+      TTS_MODEL_TTL: -1
+      # The playground calls the API from inside the container; unset, it
+      # uses the browser's URL, which isn't reachable from here.
+      LOOPBACK_HOST_URL: http://localhost:8000
+      CHAT_COMPLETION_BASE_URL: http://ollama:11434/v1
+    volumes:
+      - ./data:/home/ubuntu/.cache/huggingface/hub
+    healthcheck:
+      test: curl -fs -o /dev/null http://localhost:8000/health || exit 1
+      start_period: 300s
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  wyoming:
+    image: ghcr.io/roryeckel/wyoming_openai:0.6.1
+    container_name: wyoming_openai
+    restart: unless-stopped
+    labels:
+      lab.tier: heavy
+    depends_on:
+      speaches:
+        condition: service_healthy
+    environment:
+      WYOMING_URI: tcp://0.0.0.0:10300
+      WYOMING_LANGUAGES: en
+      STT_OPENAI_URL: http://speaches:8000/v1
+      STT_MODELS: Systran/faster-whisper-small.en
+      STT_BACKEND: SPEACHES
+      TTS_OPENAI_URL: http://speaches:8000/v1
+      TTS_MODELS: speaches-ai/Kokoro-82M-v1.0-ONNX
+      TTS_BACKEND: SPEACHES
+      TTS_VOICES: af_heart af_bella am_michael bf_emma bm_george
+    # For Home Assistant's Wyoming integration. No auth.
+    ports:
+      - "${LAN_BIND}:10300:10300"
+
+networks:
+  proxy:
+    external: true

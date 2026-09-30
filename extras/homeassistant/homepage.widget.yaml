@@ -1,0 +1,9 @@
+- Home Assistant:
+    icon: home-assistant.png
+    href: https://ha.${DOMAIN}
+    siteMonitor: https://ha.${DOMAIN}
+    description: Home automation
+    widget:
+      type: homeassistant
+      url: ${HA_URL}
+      key: "{{HOMEPAGE_VAR_HA_TOKEN}}"

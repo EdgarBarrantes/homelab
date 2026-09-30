@@ -1,0 +1,39 @@
+name: caddy
+
+# Reverse proxy for every private web UI: one wildcard certificate for
+# *.$DOMAIN, one route per enabled stack. The config Caddy reads is
+# generated into rendered/caddy/ (`./lab render`) from Caddyfile.base, the
+# TLS mode and each enabled stack's caddy.conf. It's mounted as a directory,
+# not single files, so `./lab reload caddy` always sees the new version.
+services:
+  caddy:
+    build: .
+    image: local/caddy-cloudflare:latest
+    container_name: caddy
+    restart: unless-stopped
+    env_file:
+      - ../../homelab.env
+      - .env
+    ports:
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ../../rendered/caddy:/etc/caddy:ro
+      - ../../rendered/topology:/srv/topology:ro
+      - ./data:/data     # certificates (and the internal CA): keep this
+      - ./config:/config
+    networks: [proxy]
+    # Glances runs with network_mode: host, so it can't join `proxy`; this
+    # is how Caddy reaches it.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      # 127.0.0.1, not localhost: that resolves to ::1, where the admin API isn't.
+      test: wget -q -O /dev/null http://127.0.0.1:2019/config/ || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  proxy:
+    external: true

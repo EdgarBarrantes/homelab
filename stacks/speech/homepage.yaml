@@ -1,0 +1,5 @@
+- Speech:
+    icon: sh-speaches
+    href: https://speech.${DOMAIN}
+    siteMonitor: https://speech.${DOMAIN}/health
+    description: Speech to text + text to speech

@@ -1,0 +1,16 @@
+title: ${HOMELAB_NAME}
+theme: dark
+color: indigo
+headerStyle: boxed
+statusStyle: dot
+cardBlur: xs
+fullWidth: true
+maxGroupColumns: 7
+
+layout:
+  Infrastructure:
+    style: row
+    columns: 3
+  Finance:
+    style: row
+    columns: 2

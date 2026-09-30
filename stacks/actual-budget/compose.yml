@@ -1,0 +1,23 @@
+name: actual-budget
+
+# Envelope budgeting. Actual asks for its login password on the first
+# visit to the web UI; nothing to configure here.
+services:
+  actual:
+    image: actualbudget/actual-server:26.9.0
+    container_name: actual
+    restart: unless-stopped
+    networks: [default, proxy]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      # No curl in this image; node is there.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5006/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      start_period: 20s
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  proxy:
+    external: true

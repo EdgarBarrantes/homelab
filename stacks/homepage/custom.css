@@ -1,0 +1,66 @@
+/* Dark "aurora" background: a handful of soft, blurred color blobs drifting
+   slowly behind the dashboard. Deliberately CSS-only, no video/image asset:
+   - the blur is baked into the radial-gradient falloff (transparent stops),
+     not a `filter: blur()`, so nothing gets re-blurred every frame.
+   - the only animated property is `transform` (translate + scale), which is
+     GPU-compositable and never triggers layout/paint on its own -- cheap
+     even on integrated graphics, and pauses entirely for
+     prefers-reduced-motion.
+   - lives on `html::before` (z-index: -1) rather than a new element.
+   Pairs with `cardBlur` in settings.yaml: the moving color shows through
+   the frosted service cards rather than a flat color.
+
+   Two layers of opaque backgrounds had to be overridden to make this
+   visible at all -- found by actually rendering the page headlessly and
+   reading back computed styles, after static analysis of the served CSS
+   alone (curl, no JS) missed both:
+   1. `html`'s own background-color is Homepage's theme accent var, a
+      solid, fairly bright color -- not the near-black this was designed
+      against. Same selector/specificity as the rule below, but the app's
+      own stylesheet loads after ours in <head>, so source order wins the
+      cascade without `!important`.
+   2. `body` and `#__next` get their own opaque background-color classes
+      added by Homepage's client-side JS *after* hydration -- invisible to
+      a plain `curl`, which only ever sees the pre-hydration server shell.
+      They paint on top of `html`'s background and the ::before layer both,
+      which is what actually hid this the first two times it "looked like
+      nothing changed" even though the CSS itself was already correct.
+   `!important` throughout is deliberate: there's no other way to out-rank
+   same-specificity rules and JS-added classes we don't control. */
+
+body,
+#__next {
+  background-color: transparent !important;
+}
+
+html {
+  background-color: #05070c !important;
+}
+
+html::before {
+  content: "";
+  position: fixed;
+  inset: -10vmax;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.55), transparent 45%),
+    radial-gradient(circle at 80% 25%, rgba(56, 189, 248, 0.4), transparent 45%),
+    radial-gradient(circle at 50% 80%, rgba(168, 85, 247, 0.48), transparent 50%),
+    radial-gradient(circle at 15% 75%, rgba(20, 184, 166, 0.35), transparent 45%);
+  will-change: transform;
+  animation: aurora-drift 80s ease-in-out infinite alternate;
+}
+
+@keyframes aurora-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  33%  { transform: translate3d(-3vmax, 2vmax, 0) scale(1.08); }
+  66%  { transform: translate3d(2.5vmax, -3vmax, 0) scale(1.04); }
+  100% { transform: translate3d(-2vmax, -2.5vmax, 0) scale(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html::before {
+    animation: none;
+  }
+}

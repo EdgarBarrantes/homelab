@@ -1,0 +1,6 @@
+- Gokapi:
+    # Not in Homepage's bundled icon set; selfh.st has it (sh- prefix).
+    icon: sh-gokapi
+    href: https://files.${DOMAIN}/admin
+    siteMonitor: https://files.${DOMAIN}
+    description: Expiring file shares

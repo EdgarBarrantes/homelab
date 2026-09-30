@@ -1,0 +1,2 @@
+Immich public links: in Immich, Administration > Settings > Server >
+  External domain = https://share.${PUBLIC_DOMAIN}, so shared links use it.

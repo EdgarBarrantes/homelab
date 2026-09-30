@@ -1,0 +1,2 @@
+Immich (https://photos.${DOMAIN}): the first account you create is the admin.
+  Phone: install the Immich app, server URL https://photos.${DOMAIN}.

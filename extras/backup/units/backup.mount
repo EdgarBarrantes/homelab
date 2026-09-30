@@ -1,0 +1,13 @@
+[Unit]
+Description=Backup share ${BACKUP_SMB_SHARE}
+# Prefer the LAN address over a Tailscale name: SMB through a userspace
+# WireGuard hop can stall under sustained writes.
+Wants=network-online.target
+After=network-online.target
+
+[Mount]
+What=${BACKUP_SMB_SHARE}
+Where=${BACKUP_DIR}
+Type=cifs
+Options=credentials=/etc/homelab/smb-credentials,uid=${PUID},gid=${PGID},iocharset=utf8,_netdev
+TimeoutSec=30

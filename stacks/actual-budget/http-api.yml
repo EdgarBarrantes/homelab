@@ -1,0 +1,23 @@
+services:
+  # Added by lab once ACTUAL_SERVER_PASSWORD is set (it can't log in
+  # before that). Actual has no REST API, only a Node library that syncs a local copy of
+  # the budget; this wraps it in HTTP for the Paperless AI script and the
+  # backup export. No Caddy route: gated by its own API_KEY. Loopback port
+  # for the host-level backup script.
+  http-api:
+    image: jhonderson/actual-http-api:26.9.0
+    container_name: actual_http_api
+    restart: unless-stopped
+    depends_on:
+      actual:
+        condition: service_started
+    networks: [default, proxy]
+    ports:
+      - 127.0.0.1:5007:5007
+    environment:
+      ACTUAL_SERVER_URL: http://actual:5006/
+      ACTUAL_SERVER_PASSWORD: ${ACTUAL_SERVER_PASSWORD}
+      API_KEY: ${ACTUAL_HTTP_API_KEY}
+      NODE_ENV: production
+    volumes:
+      - ./data/http-api:/data

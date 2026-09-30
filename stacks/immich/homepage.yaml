@@ -1,0 +1,5 @@
+- Immich:
+    icon: immich.png
+    href: https://photos.${DOMAIN}
+    siteMonitor: https://photos.${DOMAIN}
+    description: Photo and video library

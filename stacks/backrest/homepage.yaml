@@ -1,0 +1,5 @@
+- Backrest:
+    icon: backrest.png
+    href: https://backrest.${DOMAIN}
+    siteMonitor: https://backrest.${DOMAIN}
+    description: restic backup browser

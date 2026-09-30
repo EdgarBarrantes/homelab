@@ -1,0 +1,9 @@
+[Unit]
+Description=Automount for ${BACKUP_SMB_SHARE}
+
+[Automount]
+Where=${BACKUP_DIR}
+TimeoutIdleSec=600
+
+[Install]
+WantedBy=multi-user.target

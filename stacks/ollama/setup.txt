@@ -1,0 +1,2 @@
+Open WebUI (https://ai.${DOMAIN}): the first account is the admin. Pull models with
+  docker exec ollama ollama pull qwen2.5:3b   (and qwen2.5:7b for Paperless AI)

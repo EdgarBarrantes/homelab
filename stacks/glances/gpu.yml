@@ -1,0 +1,11 @@
+# Added by lab when GPU=yes. CDI, not `driver: nvidia`: a host
+# `systemctl daemon-reload` strips the GPU from nvidia-driver containers.
+services:
+  glances:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: cdi
+              device_ids: [nvidia.com/gpu=all]
+              capabilities: [gpu]

@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>homelab / topology</title>
+<meta name="description" content="An interactive map of every service, device and connection in this homelab.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: dark;
+  --bg:#05070c;
+  --bg-panel:#0d1120;
+  --bg-panel-2:#131a2e;
+  --border:#222b46;
+  --border-soft:#171e35;
+  --text:#e8ebf5;
+  --text-dim:#96a0c0;
+  --text-faint:#54608a;
+  --cat-device:#8b95b5;
+  --cat-external:#5b6480;
+  --cat-proxy:#45c8f1;
+  --cat-app:#7c86f5;
+  --cat-data:#2dd4bf;
+  --cat-compute:#c06bf0;
+  --line-planned:#f5a623;
+  --focus:#e8ebf5;
+  font-synthesis: none;
+}
+*{box-sizing:border-box;}
+html{height:100%;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Manrope',-apple-system,BlinkMacSystemFont,sans-serif;
+  height:100%;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- aurora backdrop (same technique as the real Homepage instance) ---------- */
+.aurora{
+  position:fixed; inset:-10vmax; z-index:0; pointer-events:none;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(124,134,245,.30), transparent 45%),
+    radial-gradient(circle at 80% 25%, rgba(69,200,241,.20), transparent 45%),
+    radial-gradient(circle at 50% 80%, rgba(192,107,240,.24), transparent 50%),
+    radial-gradient(circle at 15% 75%, rgba(45,212,191,.16), transparent 45%);
+  will-change:transform;
+  animation:aurora-drift 80s ease-in-out infinite alternate;
+}
+@keyframes aurora-drift{
+  0%{transform:translate3d(0,0,0) scale(1);}
+  33%{transform:translate3d(-3vmax,2vmax,0) scale(1.08);}
+  66%{transform:translate3d(2.5vmax,-3vmax,0) scale(1.04);}
+  100%{transform:translate3d(-2vmax,-2.5vmax,0) scale(1.1);}
+}
+@media (prefers-reduced-motion:reduce){ .aurora{animation:none;} }
+
+/* ---------- layout shell ---------- */
+.stage{position:fixed; inset:0; z-index:1;}
+svg#graph{width:100%; height:100%; display:block; touch-action:none; cursor:grab;}
+svg#graph:active{cursor:grabbing;}
+
+header{
+  position:fixed; top:0; left:0; right:0; z-index:5;
+  padding:16px 20px 12px;
+  padding-top:calc(16px + env(safe-area-inset-top,0px));
+  display:flex; flex-wrap:wrap; align-items:center; gap:14px 22px;
+  background:linear-gradient(to bottom, rgba(5,7,12,.92), rgba(5,7,12,.65) 70%, transparent);
+  pointer-events:none;
+}
+header > *{pointer-events:auto;}
+.brand{display:flex; flex-direction:column; gap:2px; margin-right:4px;}
+.brand h1{
+  margin:0; font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:17px; font-weight:600; letter-spacing:.02em; color:var(--text);
+  display:flex; align-items:center; gap:8px;
+}
+.brand h1 .dot{width:8px;height:8px;border-radius:50%;background:var(--cat-app);
+  box-shadow:0 0 8px var(--cat-app); flex:none;}
+.brand p{margin:0; font-size:11.5px; color:var(--text-faint); max-width:44ch; line-height:1.4;}
+
+.search{
+  display:flex; align-items:center; gap:8px;
+  background:var(--bg-panel); border:1px solid var(--border);
+  border-radius:8px; padding:7px 11px; min-width:180px;
+}
+.search svg{flex:none; opacity:.5;}
+.search input{
+  background:transparent; border:0; outline:0; color:var(--text);
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12.5px; width:140px;
+}
+.search input::placeholder{color:var(--text-faint);}
+
+.chips{display:flex; flex-wrap:wrap; gap:6px; max-width:520px;}
+.chip{
+  font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:11px; letter-spacing:.02em; padding:5px 10px 5px 8px;
+  border-radius:999px; border:1px solid var(--border);
+  background:var(--bg-panel); color:var(--text-dim);
+  display:flex; align-items:center; gap:6px; cursor:pointer;
+  user-select:none; transition:border-color .15s, color .15s, background .15s;
+  white-space:nowrap;
+}
+.chip .sw{width:7px;height:7px;border-radius:50%;flex:none;}
+.chip[data-active="true"]{color:var(--text); background:var(--bg-panel-2); border-color:var(--border);}
+.chip[data-active="false"]{opacity:.4;}
+.chip:hover{border-color:var(--text-faint);}
+
+.stats{
+  margin-left:auto; font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:11px; color:var(--text-faint); white-space:nowrap;
+}
+
+/* ---------- legend ---------- */
+.legend{
+  position:fixed; left:16px; bottom:16px;
+  padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  z-index:5; background:var(--bg-panel); border:1px solid var(--border);
+  border-radius:10px; padding:12px 14px; width:190px;
+  font-size:11px; color:var(--text-dim);
+}
+.legend h2{
+  margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.09em;
+  color:var(--text-faint); font-weight:700;
+}
+.legend .row{display:flex; align-items:center; gap:8px; margin:5px 0;}
+.legend .sw{width:9px; height:9px; border-radius:50%; flex:none;}
+.legend .ln{width:18px; height:0; flex:none; border-top-width:2px; border-top-style:solid;}
+.legend hr{border:0; border-top:1px solid var(--border-soft); margin:9px 0;}
+.legend-toggle{display:none;}
+
+/* ---------- detail panel ---------- */
+.panel{
+  position:fixed; top:0; right:0; height:100%; width:340px; max-width:88vw;
+  background:var(--bg-panel); border-left:1px solid var(--border);
+  z-index:8; transform:translateX(100%); transition:transform .28s cubic-bezier(.2,.8,.2,1);
+  padding:20px 22px; padding-top:calc(20px + env(safe-area-inset-top,0px));
+  padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));
+  overflow-y:auto;
+}
+.panel[data-open="true"]{transform:translateX(0);}
+.panel .close{
+  position:absolute; top:16px; right:16px; width:28px; height:28px; border-radius:7px;
+  border:1px solid var(--border); background:var(--bg-panel-2); color:var(--text-dim);
+  display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px;
+}
+.panel .close:hover{color:var(--text);}
+.panel .cat-tag{
+  display:inline-flex; align-items:center; gap:6px; font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim);
+  margin-bottom:10px; margin-top:26px;
+}
+.panel .cat-tag .sw{width:8px;height:8px;border-radius:50%;}
+.panel h2{margin:0 0 3px; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:20px;}
+.panel .sub{margin:0 0 16px; color:var(--text-faint); font-size:12.5px;}
+.panel .desc{margin:0 0 16px; font-size:13.5px; line-height:1.6; color:#c7cde3;}
+.panel .host{
+  display:inline-block; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11.5px;
+  background:var(--bg-panel-2); border:1px solid var(--border); color:var(--text-dim);
+  padding:5px 9px; border-radius:6px; margin-bottom:16px; word-break:break-all;
+}
+.panel .note{
+  font-size:12px; line-height:1.55; color:#e3c98a; background:rgba(245,166,35,.08);
+  border:1px solid rgba(245,166,35,.25); border-radius:8px; padding:10px 12px; margin-bottom:16px;
+}
+.panel .note b{color:#f5c877;}
+.panel .links h3{
+  font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-faint);
+  margin:0 0 8px; font-weight:700;
+}
+.panel .linkrow{
+  display:flex; align-items:center; gap:8px; padding:7px 0; font-size:12.5px;
+  border-top:1px solid var(--border-soft); cursor:pointer; color:var(--text-dim);
+}
+.panel .linkrow:hover{color:var(--text);}
+.panel .linkrow .sw{width:6px;height:6px;border-radius:50%;flex:none;}
+.panel .linkrow .arrow{color:var(--text-faint); font-size:11px;}
+
+.hint{
+  position:fixed; bottom:16px; right:16px; z-index:5;
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10.5px; color:var(--text-faint);
+  background:var(--bg-panel); border:1px solid var(--border); border-radius:8px;
+  padding:7px 10px; pointer-events:none;
+}
+
+/* nodes/edges */
+.node{cursor:pointer;}
+.node circle{stroke-width:1.6; transition:filter .15s;}
+.node text{
+  font-family:'JetBrains Mono',ui-monospace,monospace; fill:var(--text);
+  paint-order:stroke; stroke:var(--bg); stroke-width:3px; stroke-linejoin:round;
+  pointer-events:none;
+}
+.node .sub-label{fill:var(--text-faint); stroke:var(--bg);}
+.node.dim{opacity:.16;}
+.node.hi circle{filter:drop-shadow(0 0 7px currentColor);}
+.edge{fill:none;}
+.edge.dim{opacity:.06;}
+.edge-pipeline{stroke-dasharray:5 4; animation:flow 1.4s linear infinite;}
+@media (prefers-reduced-motion:reduce){ .edge-pipeline{animation:none;} }
+@keyframes flow{ to{ stroke-dashoffset:-18; } }
+
+@media (max-width:720px){
+  .brand p{display:none;}
+  .stats{display:none;}
+  .chips{max-width:100%; overflow-x:auto; flex-wrap:nowrap; padding-bottom:2px;}
+  .search{min-width:0;}
+  .search input{width:96px;}
+  .legend{
+    width:auto; max-width:60vw; padding:10px 12px;
+    display:none;
+  }
+  .legend[data-open="true"]{display:block;}
+  .legend-toggle{
+    display:flex; position:fixed; left:16px; bottom:16px; z-index:6;
+    padding-bottom:calc(0px + env(safe-area-inset-bottom,0px));
+    width:36px; height:36px; border-radius:9px; border:1px solid var(--border);
+    background:var(--bg-panel); color:var(--text-dim); align-items:center; justify-content:center;
+    font-family:'JetBrains Mono',monospace; font-size:14px;
+  }
+  .legend[data-open="true"] + .legend-toggle{ left:16px; bottom:calc(16px + 190px); }
+  .panel{width:100%; max-width:100%;}
+  .hint{display:none;}
+}
+</style>
+</head>
+<body>
+
+<div class="aurora"></div>
+
+<header>
+  <div class="brand">
+    <h1><span class="dot"></span>homelab <span style="color:var(--text-faint);font-weight:400;">/ topology</span></h1>
+    <p>What's actually deployed and how it talks to itself &mdash; not a live status feed. See CLAUDE.md in the repo for the source of truth.</p>
+  </div>
+  <div class="search">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input id="search" type="text" placeholder="find a node&hellip;" autocomplete="off">
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div class="stage"><svg id="graph"></svg></div>
+
+<div class="legend" id="legend">
+  <h2>Roles</h2>
+  <div id="legend-cats"></div>
+  <hr>
+  <h2>Connections</h2>
+  <div id="legend-edges"></div>
+</div>
+<button class="legend-toggle" id="legend-toggle" aria-label="Toggle legend">?</button>
+
+<div class="panel" id="panel">
+  <button class="close" id="panel-close">&times;</button>
+  <div id="panel-body"></div>
+</div>
+
+<div class="hint">drag to rearrange &middot; scroll to zoom &middot; click a node</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+var CATS = {
+  device:  {label:"Physical device",   color:"#8b95b5"},
+  external:{label:"Outside the LAN",   color:"#5b6480"},
+  proxy:   {label:"Routing / exposure",color:"#45c8f1"},
+  app:     {label:"User-facing service",color:"#7c86f5"},
+  data:    {label:"Storage / cache",   color:"#2dd4bf"},
+  compute: {label:"Compute / automation",color:"#c06bf0"}
+};
+
+var EDGE_STYLES = {
+  proxy:    {label:"Caddy route (private)",   color:"#45c8f1", dash:null,   width:1.6},
+  tunnel:   {label:"cloudflared (public)",    color:"#f5a623", dash:null,   width:2},
+  pipeline: {label:"scan → budget pipeline", color:"#c06bf0", dash:"5 4", width:2.4, cls:"edge-pipeline"},
+  backup:   {label:"backup",                  color:"#2dd4bf", dash:"2 4",  width:1.6},
+  widget:   {label:"reads status from",       color:"#54608a", dash:"1 3",  width:1.1},
+  internal: {label:"internal wiring",         color:"#2dd4bf", dash:null,   width:1.1},
+  mesh:     {label:"tailnet membership",      color:"#3a4266", dash:"1 3",  width:1},
+  planned:  {label:"planned",                 color:"#f5a623", dash:"1 5",  width:1.4}
+};
+
+// ---------------------------------------------------------------- content loader
+// Nodes/edges are no longer hardcoded here -- they're parsed from
+// topology.md at load time, so editing that file (no build step, no
+// container restart -- Caddy's file_server reads straight off disk) is
+// all it takes to update the map. See topology.md's own header comment
+// for the schema.
+var DEFAULT_RADIUS = {device:16, external:12, proxy:17, app:15, data:9, compute:14};
+
+function escapeHtml(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function inlineMd(s){
+  var out = escapeHtml(s);
+  out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
+  out = out.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  return out;
+}
+
+function parseTopology(text){
+  var lines = text.split("\n");
+  var nodes = [], edges = [];
+  var section = null, cur = null, descLines = [], noteLines = [];
+
+  function flush(){
+    if(cur){
+      cur.desc = inlineMd(descLines.join(" ").trim());
+      if(noteLines.length) cur.note = inlineMd(noteLines.join(" ").trim());
+      nodes.push(cur);
+    }
+    cur = null; descLines = []; noteLines = [];
+  }
+
+  for(var i=0;i<lines.length;i++){
+    var trimmed = lines[i].trim();
+
+    if(/^##\s+Nodes\s*$/i.test(trimmed)){ flush(); section="nodes"; continue; }
+    if(/^##\s+Edges\s*$/i.test(trimmed)){ flush(); section="edges"; continue; }
+    if(/^##\s/.test(trimmed)){ flush(); section=null; continue; }
+
+    if(section==="nodes"){
+      var h = trimmed.match(/^###\s+([a-zA-Z]+):\s*(\S+)\s*$/);
+      if(h){
+        flush();
+        var cat = h[1].toLowerCase();
+        cur = {cat:cat, id:h[2], label:h[2], r: DEFAULT_RADIUS[cat] || 14};
+        continue;
+      }
+      if(!cur) continue;
+      var kv = trimmed.match(/^(label|sub|host|radius|planned):\s*(.*)$/i);
+      if(kv){
+        var key = kv[1].toLowerCase(), val = kv[2].trim();
+        if(key==="radius") cur.r = parseFloat(val) || cur.r;
+        else if(key==="planned") cur.planned = /^true$/i.test(val);
+        else cur[key] = val;
+        continue;
+      }
+      if(trimmed.charAt(0)===">"){ noteLines.push(trimmed.replace(/^>\s?/, "")); continue; }
+      if(trimmed) descLines.push(trimmed);
+      continue;
+    }
+
+    if(section==="edges"){
+      var em = trimmed.match(/^-\s*(\S+)\s*->\s*(\S+)\s*\[(\w+)\]\s*$/);
+      if(em) edges.push({source:em[1], target:em[2], type:em[3]});
+      continue;
+    }
+  }
+  flush();
+  return {nodes:nodes, edges:edges};
+}
+
+fetch("topology.md")
+  .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status+" fetching topology.md"); return r.text(); })
+  .then(function(text){
+    var data = parseTopology(text);
+    var known = {}; data.nodes.forEach(function(n){ known[n.id]=true; });
+    var edges = data.edges.filter(function(e){
+      var ok = known[e.source] && known[e.target];
+      if(!ok) console.warn("topology.md: skipping edge with unknown node", e);
+      return ok;
+    });
+    if(!data.nodes.length){ throw new Error("topology.md parsed to zero nodes -- check the ## Nodes heading exists"); }
+    init(data.nodes, edges);
+  })
+  .catch(function(err){
+    document.querySelector(".stage").innerHTML =
+      '<div style="max-width:520px;margin:120px auto 0;padding:0 20px;font-family:\'JetBrains Mono\',monospace;'+
+      'font-size:13px;line-height:1.6;color:#e3c98a;text-align:center;">'+
+      'Could not load the map: ' + escapeHtml(err && err.message ? err.message : err) +
+      '<br><br>Check that <code>topology.md</code> sits next to <code>index.html</code> and follows its schema.</div>';
+  });
+
+// ---------------------------------------------------------------- render
+function init(nodes, edges){
+
+// ---------------------------------------------------------------- chips + legend
+var chipsEl = document.getElementById("chips");
+var activeCats = new Set(Object.keys(CATS));
+Object.keys(CATS).forEach(function(k){
+  var chip = document.createElement("div");
+  chip.className = "chip"; chip.dataset.active = "true"; chip.dataset.cat = k;
+  chip.innerHTML = '<span class="sw" style="background:'+CATS[k].color+'"></span>'+CATS[k].label;
+  chip.addEventListener("click", function(){
+    if(activeCats.has(k)){ activeCats.delete(k); chip.dataset.active="false"; }
+    else{ activeCats.add(k); chip.dataset.active="true"; }
+    applyFilter();
+  });
+  chipsEl.appendChild(chip);
+});
+
+var legendCats = document.getElementById("legend-cats");
+Object.keys(CATS).forEach(function(k){
+  var row = document.createElement("div"); row.className = "row";
+  row.innerHTML = '<span class="sw" style="background:'+CATS[k].color+'"></span>'+CATS[k].label;
+  legendCats.appendChild(row);
+});
+var legendEdges = document.getElementById("legend-edges");
+Object.keys(EDGE_STYLES).forEach(function(k){
+  var s = EDGE_STYLES[k];
+  var row = document.createElement("div"); row.className = "row";
+  row.innerHTML = '<span class="ln" style="border-color:'+s.color+(s.dash?';border-top-style:dashed':'')+'"></span>'+s.label;
+  legendEdges.appendChild(row);
+});
+document.getElementById("legend-toggle").addEventListener("click", function(){
+  var l = document.getElementById("legend");
+  l.dataset.open = l.dataset.open === "true" ? "false" : "true";
+});
+
+document.getElementById("stats").textContent = nodes.length + " nodes · " + edges.length + " links";
+
+// ---------------------------------------------------------------- graph
+var svg = d3.select("#graph");
+var root = svg.append("g");
+var linkLayer = root.append("g").attr("class","links");
+var nodeLayer = root.append("g").attr("class","nodes");
+
+function size(){ return {w: window.innerWidth, h: window.innerHeight}; }
+
+var sim = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(edges).id(function(d){return d.id;})
+    .distance(function(d){
+      if(d.type==="internal") return 46;
+      if(d.type==="pipeline") return 95;
+      if(d.type==="mesh") return 130;
+      return 78;
+    })
+    .strength(function(d){ return d.type==="internal" ? 0.9 : 0.35; }))
+  .force("charge", d3.forceManyBody().strength(-260).distanceMax(480))
+  .force("collide", d3.forceCollide().radius(function(d){ return d.r + 22; }).iterations(2))
+  .force("center", d3.forceCenter(0,0))
+  .force("x", d3.forceX(0).strength(0.02))
+  .force("y", d3.forceY(0).strength(0.02));
+
+var link = linkLayer.selectAll("path").data(edges).join("path")
+  .attr("class", function(d){ return "edge " + (EDGE_STYLES[d.type].cls || ""); })
+  .attr("stroke", function(d){ return EDGE_STYLES[d.type].color; })
+  .attr("stroke-width", function(d){ return EDGE_STYLES[d.type].width; })
+  .attr("stroke-dasharray", function(d){ return EDGE_STYLES[d.type].dash; })
+  .attr("stroke-opacity", function(d){ return d.type==="internal" || d.type==="mesh" ? 0.55 : 0.8; });
+
+var node = nodeLayer.selectAll("g").data(nodes).join("g")
+  .attr("class","node")
+  .call(d3.drag()
+    .on("start", function(event,d){ if(!event.active) sim.alphaTarget(0.25).restart(); d.fx=d.x; d.fy=d.y; })
+    .on("drag", function(event,d){ d.fx=event.x; d.fy=event.y; })
+    .on("end", function(event,d){ if(!event.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+
+node.append("circle")
+  .attr("r", function(d){ return d.r; })
+  .attr("fill", function(d){ return "rgba(5,7,12,.9)"; })
+  .attr("stroke", function(d){ return CATS[d.cat].color; })
+  .style("color", function(d){ return CATS[d.cat].color; })
+  .attr("stroke-dasharray", function(d){ return d.planned ? "3 3" : null; });
+
+node.append("circle")
+  .attr("r", function(d){ return Math.max(2.5, d.r*0.22); })
+  .attr("fill", function(d){ return CATS[d.cat].color; })
+  .attr("opacity", 0.9);
+
+node.append("text")
+  .attr("y", function(d){ return d.r + 14; })
+  .attr("text-anchor","middle")
+  .attr("font-size", function(d){ return d.r >= 17 ? 12.5 : 10.5; })
+  .attr("font-weight", function(d){ return d.r >= 17 ? 600 : 500; })
+  .text(function(d){ return d.label; });
+
+node.filter(function(d){ return d.sub; }).append("text")
+  .attr("class","sub-label")
+  .attr("y", function(d){ return d.r + 27; })
+  .attr("text-anchor","middle")
+  .attr("font-size", 9.5)
+  .text(function(d){ return d.sub; });
+
+node.on("click", function(event,d){ event.stopPropagation(); openPanel(d); });
+
+sim.on("tick", function(){
+  link.attr("d", function(d){
+    var dx = d.target.x-d.source.x, dy = d.target.y-d.source.y;
+    return "M"+d.source.x+","+d.source.y+" L"+d.target.x+","+d.target.y;
+  });
+  node.attr("transform", function(d){ return "translate("+d.x+","+d.y+")"; });
+});
+
+var zoom = d3.zoom().scaleExtent([0.35,2.5]).on("zoom", function(event){
+  root.attr("transform", event.transform);
+});
+svg.call(zoom);
+
+function centerView(){
+  var s = size();
+  svg.attr("viewBox", [-s.w/2, -s.h/2, s.w, s.h]);
+}
+centerView();
+window.addEventListener("resize", centerView);
+
+// ---------------------------------------------------------------- filtering / search
+var byId = {}; nodes.forEach(function(n){ byId[n.id]=n; });
+var neighbors = {}; nodes.forEach(function(n){ neighbors[n.id] = new Set([n.id]); });
+edges.forEach(function(e){
+  neighbors[e.source.id||e.source].add(e.target.id||e.target);
+  neighbors[e.target.id||e.target].add(e.source.id||e.source);
+});
+
+function applyFilter(){
+  var q = document.getElementById("search").value.trim().toLowerCase();
+  node.classed("dim", function(d){
+    if(!activeCats.has(d.cat)) return true;
+    if(q && d.label.toLowerCase().indexOf(q)===-1 && (d.sub||"").toLowerCase().indexOf(q)===-1) return true;
+    return false;
+  });
+  link.classed("dim", function(d){
+    var s = d.source.id||d.source, t = d.target.id||d.target;
+    var sd = byId[s], td = byId[t];
+    if(!activeCats.has(sd.cat) || !activeCats.has(td.cat)) return true;
+    if(q){
+      var sMatch = sd.label.toLowerCase().indexOf(q)>-1, tMatch = td.label.toLowerCase().indexOf(q)>-1;
+      if(!sMatch && !tMatch) return true;
+    }
+    return false;
+  });
+}
+document.getElementById("search").addEventListener("input", applyFilter);
+
+// ---------------------------------------------------------------- detail panel
+var panel = document.getElementById("panel");
+var panelBody = document.getElementById("panel-body");
+
+function openPanel(d){
+  node.classed("hi", function(n){ return n.id===d.id; });
+  var linked = edges.filter(function(e){ return (e.source.id||e.source)===d.id || (e.target.id||e.target)===d.id; });
+  var rows = linked.map(function(e){
+    var s = e.source.id||e.source, t = e.target.id||e.target;
+    var other = s===d.id ? byId[t] : byId[s];
+    var dir = s===d.id ? "→" : "←";
+    return {other:other, dir:dir, style:EDGE_STYLES[e.type]};
+  });
+  var html = ''
+    + '<div class="cat-tag"><span class="sw" style="background:'+CATS[d.cat].color+'"></span>'+CATS[d.cat].label+'</div>'
+    + '<h2>'+d.label+'</h2>'
+    + (d.sub ? '<p class="sub">'+d.sub+'</p>' : '')
+    + '<p class="desc">'+d.desc+'</p>'
+    + (d.host ? '<div class="host">'+d.host+'</div>' : '')
+    + (d.note ? '<div class="note">'+d.note+'</div>' : '')
+    + (rows.length ? '<div class="links"><h3>Connections ('+rows.length+')</h3>'+
+        rows.map(function(r){
+          return '<div class="linkrow" data-id="'+r.other.id+'"><span class="sw" style="background:'+CATS[r.other.cat].color+'"></span>'
+            + r.other.label + '<span class="arrow">'+r.dir+' '+r.style.label+'</span></div>';
+        }).join("") + '</div>' : '');
+  panelBody.innerHTML = html;
+  panel.dataset.open = "true";
+  panelBody.querySelectorAll(".linkrow").forEach(function(el){
+    el.addEventListener("click", function(){ openPanel(byId[el.dataset.id]); });
+  });
+}
+document.getElementById("panel-close").addEventListener("click", closePanel);
+function closePanel(){ panel.dataset.open="false"; node.classed("hi", false); }
+svg.on("click", closePanel);
+
+} // end init()
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+Paperless (https://docs.${DOMAIN}): user "admin", password: ./lab secret paperless-ngx PAPERLESS_ADMIN_PASSWORD
+  Drop PDFs/images into ${PAPERLESS_CONSUME_DIR} to import them.

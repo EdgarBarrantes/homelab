@@ -1,0 +1,3 @@
+Calibre-Web (https://books.${DOMAIN}): log in as admin / admin123 and change it.
+  Database location: /books (needs a metadata.db: an existing Calibre library,
+  or create one with Calibre desktop). External binaries path: /usr/bin.

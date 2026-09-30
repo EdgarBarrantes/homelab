@@ -1,0 +1,49 @@
+name: ollama
+
+# Local LLMs: Ollama runs the models, Open WebUI is the chat frontend.
+# Ollama joins `proxy` (no Caddy route) so other stacks reach it by name.
+services:
+  ollama:
+    image: ollama/ollama:0.34.4
+    container_name: ollama
+    restart: unless-stopped
+    labels:
+      lab.tier: heavy
+    volumes:
+      - ./data/models:/root/.ollama
+    networks: [default, proxy]
+    # For LAN clients such as Home Assistant. LAN_BIND=127.0.0.1 keeps it
+    # local. No auth on Ollama: anything that can reach this port can use it.
+    ports:
+      - "${LAN_BIND}:11434:11434"
+    healthcheck:
+      test: ollama list || exit 1
+      start_period: 20s
+      interval: 30s
+      timeout: 10s
+
+  open-webui:
+    # Builtin tools (tasks, notes, calendar...) are on for every model
+    # without its own Workspace > Models entry and push prompts past small
+    # models' context: turn them off per model (see docs/troubleshooting.md).
+    image: ghcr.io/open-webui/open-webui:v0.11.4
+    container_name: open-webui
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+    volumes:
+      - ./data/open-webui:/app/backend/data
+    networks: [default, proxy]
+    healthcheck:
+      test: curl -f -s -o /dev/null http://localhost:8080/health || exit 1
+      start_period: 30s
+      interval: 30s
+      timeout: 10s
+
+networks:
+  proxy:
+    external: true

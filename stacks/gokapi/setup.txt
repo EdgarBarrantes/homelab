@@ -1,0 +1,3 @@
+Gokapi (https://files.${DOMAIN}/setup): run the setup wizard once. "Public Facing
+  URL": https://files.${DOMAIN}/, or https://send.<PUBLIC_DOMAIN>/ with public links
+  (docs/public-exposure.md).

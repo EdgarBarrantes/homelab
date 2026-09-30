@@ -1,0 +1,26 @@
+name: immich-public-proxy
+
+# Makes Immich's shared links public (https://share.$PUBLIC_DOMAIN) without
+# exposing Immich: each request is checked against Immich's own shared-link
+# data before forwarding, so login, upload and the library are never
+# reachable through it. Reached by cloudflared on loopback, not via Caddy.
+# https://github.com/alangrainger/immich-public-proxy
+services:
+  immich-public-proxy:
+    image: alangrainger/immich-public-proxy:3
+    container_name: immich-public-proxy
+    restart: unless-stopped
+    environment:
+      IMMICH_URL: http://immich_server:2283
+      PUBLIC_BASE_URL: https://share.${PUBLIC_DOMAIN}
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks: [proxy]
+    healthcheck:
+      test: curl -s http://localhost:3000/share/healthcheck -o /dev/null || exit 1
+      start_period: 10s
+      timeout: 5s
+
+networks:
+  proxy:
+    external: true

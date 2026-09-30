@@ -1,0 +1,26 @@
+# Local changes on top of the upstream docker-compose.yml, which stays
+# untouched so upgrades are a straight file replacement.
+
+services:
+  immich-server:
+    restart: unless-stopped
+    networks: [default, proxy]
+    # Caddy reaches it by container name; the published port is only for
+    # host-local tools, so keep it off 0.0.0.0.
+    ports: !override
+      - "127.0.0.1:2283:2283"
+
+  immich-machine-learning:
+    restart: unless-stopped
+    labels:
+      lab.tier: heavy
+
+  redis:
+    restart: unless-stopped
+
+  database:
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

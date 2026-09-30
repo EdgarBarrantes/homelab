@@ -1,0 +1,26 @@
+name: glances
+
+# System monitor (CPU, memory, disks, network, GPU, containers).
+# network_mode: host is needed for real interface stats (a bridge would only
+# show its own veth), which means it can't join `proxy`: Caddy and Homepage
+# reach it at host.docker.internal instead. Read-only docker socket and host
+# PID namespace are Glances' documented requirements for container/process
+# stats; docker.sock read access does expose all container metadata.
+services:
+  glances:
+    image: nicolargo/glances:ubuntu-4.5.7-full
+    container_name: glances
+    restart: unless-stopped
+    pid: host
+    network_mode: host
+    environment:
+      GLANCES_OPT: "-w"
+      TZ: ${TZ}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: curl -f -s -o /dev/null http://localhost:61208/ || exit 1
+      start_period: 20s
+      interval: 30s
+      timeout: 5s
+      retries: 5

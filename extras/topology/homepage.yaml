@@ -1,0 +1,4 @@
+- Topology Map:
+    icon: mdi-sitemap
+    href: https://map.${DOMAIN}
+    description: Interactive map of this setup

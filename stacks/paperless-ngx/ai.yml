@@ -1,0 +1,23 @@
+# Added by lab when PAPERLESS_AI=yes (needs the ollama and actual-budget
+# stacks). See extras/paperless-ai/README.md.
+services:
+  webserver:
+    volumes:
+      - ../../extras/paperless-ai:/usr/src/paperless/scripts:ro
+    environment:
+      # Native AI suggestions (title/correspondent/tags/type), local Ollama.
+      PAPERLESS_AI_ENABLED: "true"
+      PAPERLESS_AI_LLM_BACKEND: ollama
+      PAPERLESS_AI_LLM_MODEL: qwen2.5:3b
+      PAPERLESS_AI_LLM_ENDPOINT: http://ollama:11434
+      PAPERLESS_AI_LLM_OUTPUT_LANGUAGE: en
+      # English summary + title for every document; genuine receipts also
+      # become transactions in Actual Budget. Never fails consumption.
+      PAPERLESS_POST_CONSUME_SCRIPT: /usr/src/paperless/scripts/post-consume-translate.py
+      PAPERLESS_API_TOKEN: ${PAPERLESS_API_TOKEN}
+      OLLAMA_URL: http://ollama:11434
+      TRANSLATE_MODEL: qwen2.5:7b
+      ACTUAL_HTTP_API_URL: http://actual_http_api:5007
+      ACTUAL_HTTP_API_KEY: ${ACTUAL_HTTP_API_KEY}
+      ACTUAL_BUDGET_SYNC_ID: ${ACTUAL_BUDGET_SYNC_ID}
+      ACTUAL_ACCOUNT_NAME: Receipts

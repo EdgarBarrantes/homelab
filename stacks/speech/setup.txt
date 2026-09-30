@@ -1,0 +1,2 @@
+Speech (https://speech.${DOMAIN}): first start downloads ~2 GB of models.
+  Home Assistant: add the Wyoming integration at ${LAN_BIND}:10300.

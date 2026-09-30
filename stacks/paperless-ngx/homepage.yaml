@@ -1,0 +1,5 @@
+- Paperless-ngx:
+    icon: paperless-ngx.png
+    href: https://docs.${DOMAIN}
+    siteMonitor: https://docs.${DOMAIN}
+    description: Scanned document management

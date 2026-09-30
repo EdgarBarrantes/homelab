@@ -1,0 +1,5 @@
+- Calibre-Web:
+    icon: calibre-web.png
+    href: https://books.${DOMAIN}
+    siteMonitor: https://books.${DOMAIN}
+    description: Ebook library

@@ -1,0 +1,4 @@
+Actual (https://budget.${DOMAIN}): choose a password on first visit, then
+  ./lab config actual-budget ACTUAL_SERVER_PASSWORD   (same password)
+  ./lab config actual-budget ACTUAL_BUDGET_SYNC_ID    (Settings > Advanced > Sync ID)
+  ./lab up actual-budget

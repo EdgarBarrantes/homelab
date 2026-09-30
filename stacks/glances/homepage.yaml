@@ -1,0 +1,23 @@
+# One Glances widget per metric (the widget takes a single `metric:`).
+- CPU Usage:
+    widget:
+      type: glances
+      url: http://host.docker.internal:61208
+      version: 4
+      metric: cpu
+- Memory Usage:
+    widget:
+      type: glances
+      url: http://host.docker.internal:61208
+      version: 4
+      metric: memory
+- Network Usage:
+    widget:
+      type: glances
+      url: http://host.docker.internal:61208
+      version: 4
+      metric: network:${NET_IFACE}
+- Glances:
+    icon: glances.png
+    href: https://glances.${DOMAIN}
+    description: Full dashboard (disks, sensors, processes, containers)

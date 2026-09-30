@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+# lab: manage the stacks in this repo (one folder per stack under stacks/).
+#
+#   lab ls                     all stacks, enabled or not, with descriptions
+#   lab status                 running containers, with their tier
+#   lab up      [stack...]     render config, start stacks (default: enabled)
+#   lab down    [stack...]     stop and remove containers (data is kept)
+#   lab restart [stack...]
+#   lab stop    [stack...]     stop without removing containers
+#   lab pause                  stop only containers labelled lab.tier=heavy
+#   lab pause --all            stop every stack
+#   lab resume                 start everything enabled again
+#   lab logs <stack> [svc]     follow logs
+#   lab update  [stack...]     pull new images and recreate
+#   lab enable|disable <stack> add/remove a stack (then: lab up)
+#   lab sh <stack> <svc>       shell into a container
+#   lab compose <stack> ...    any docker compose command, with lab's files
+#   lab render                 regenerate Caddy/Homepage/tunnel/backup config
+#   lab reload caddy           apply a Caddy config change without downtime
+#   lab doctor                 check that everything is healthy
+#   lab config <stack> <KEY>   set a value in a stack's .env (asks, hidden)
+#   lab secret <stack> <KEY>   print a value from a stack's .env
+#   lab backup [now|status|log] run or inspect the nightly backup
+#   lab restore [--dry-run]    bring data back from the backups (see --help)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+PROXY_NET=proxy
+# shellcheck source=lib/common.sh
+source "$ROOT/lib/common.sh"
+trap on_exit EXIT
+# shellcheck source=lib/render.sh
+source "$ROOT/lib/render.sh"
+# shellcheck source=lib/doctor.sh
+source "$ROOT/lib/doctor.sh"
+# shellcheck source=lib/restore.sh
+source "$ROOT/lib/restore.sh"
+
+load_config || die "no homelab.env yet: run ./install.sh first"
+
+# Use the given stacks, or all enabled ones when none were given.
+pick() { if (($#)); then printf '%s\n' "$@"; else enabled_stacks; fi; }
+
+# dc <stack> <compose args...>: docker compose with homelab.env + the
+# stack's .env, and each overlay whose switch is on (gpu.yml when GPU=yes).
+dc() {
+  local s="$1"; shift
+  local dir="$STACKS_DIR/$s" f ov var files=() envs=(--env-file "$HOMELAB_ENV")
+  [[ -f "$dir/stack.conf" ]] || die "no such stack: $s"
+  for f in compose.yml docker-compose.yml docker-compose.override.yml; do
+    [[ -f "$dir/$f" ]] && files+=(-f "$dir/$f")
+  done
+  for ov in $(stack_meta "$s" OVERLAYS); do
+    f="${ov%%:*}"; var="${ov#*:}"
+    if [[ "$var" == \?* ]]; then  # ?KEY: on when KEY is set in the stack's .env
+      [[ -n "$(env_get "$dir/.env" "${var#\?}")" ]] && files+=(-f "$dir/$f")
+    else
+      is_yes "${!var:-no}" && files+=(-f "$dir/$f")
+    fi
+  done
+  [[ -f "$dir/.env" ]] && envs+=(--env-file "$dir/.env")
+  docker compose --project-directory "$dir" "${envs[@]}" "${files[@]}" "$@"
+}
+
+ensure_net() {
+  docker network inspect "$PROXY_NET" >/dev/null 2>&1 \
+    || docker network create "$PROXY_NET" >/dev/null
+}
+
+caddy_reload() {
+  if [[ "$(docker inspect -f '{{.State.Running}}' caddy 2>/dev/null)" == true ]]; then
+    docker exec caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 \
+      && echo "caddy: config reloaded" || warn "caddy reload failed: ./lab logs caddy"
+  fi
+}
+
+# set_stacks <list>: write STACKS= back to homelab.env.
+set_stacks() {
+  STACKS="$(printf '%s\n' $1 | awk 'NF && !seen[$0]++' | tr '\n' ' ' | sed 's/ $//')"
+  env_set "$HOMELAB_ENV" STACKS "$STACKS"
+}
+
+cmd="${1:-status}"; shift || true
+case "$cmd" in
+  ls)
+    for s in $(all_stacks); do
+      if is_enabled "$s"; then mark="${C_GRN}on ${C_0}"; else mark="${C_DIM}off${C_0}"; fi
+      printf '  %s  %-20s %s\n' "$mark" "$s" "$(stack_meta "$s" DESCRIPTION)"
+    done ;;
+  status|ps)
+    docker ps -a --filter label=com.docker.compose.project \
+      --format 'table {{.Label "com.docker.compose.project"}}\t{{.Names}}\t{{.Status}}\t{{.Label "lab.tier"}}' ;;
+  up|resume)
+    render_all
+    ensure_net
+    for s in $(pick "$@"); do echo "== $s"; dc "$s" up -d --build --remove-orphans; done
+    caddy_reload ;;
+  down)
+    for s in $(pick "$@" | tac); do echo "== $s"; dc "$s" down; done ;;
+  restart)
+    for s in $(pick "$@"); do echo "== $s"; dc "$s" restart; done ;;
+  stop)
+    for s in $(pick "$@" | tac); do echo "== $s"; dc "$s" stop; done ;;
+  pause)
+    if [[ "${1:-}" == "--all" ]]; then
+      for s in $(enabled_stacks | tac); do echo "== $s"; dc "$s" stop; done
+    else
+      ids="$(docker ps -q --filter label=lab.tier=heavy)"
+      # shellcheck disable=SC2086
+      [[ -n "$ids" ]] && docker stop $ids || echo "nothing heavy running"
+    fi ;;
+  logs)
+    [[ $# -ge 1 ]] || die "usage: lab logs <stack> [service]"
+    s="$1"; shift; dc "$s" logs -f --tail 100 "$@" ;;
+  update|pull)
+    render_all
+    ensure_net
+    for s in $(pick "$@"); do echo "== $s"; dc "$s" pull --ignore-buildable && dc "$s" up -d --build; done
+    docker image prune -f ;;
+  enable)
+    [[ $# -ge 1 ]] || die "usage: lab enable <stack>..."
+    for s in "$@"; do [[ -f "$STACKS_DIR/$s/stack.conf" ]] || die "no such stack: $s"; done
+    set_stacks "$STACKS $*"
+    render_all
+    echo "enabled: $*  (start with: ./lab up $*)" ;;
+  disable)
+    [[ $# -ge 1 ]] || die "usage: lab disable <stack>..."
+    new=""; for s in $STACKS; do [[ " $* " == *" $s "* ]] || new+="$s "; done
+    set_stacks "$new"
+    render_all; caddy_reload
+    echo "disabled: $*  (containers still exist until: ./lab down $*)" ;;
+  sh)
+    [[ $# -eq 2 ]] || die "usage: lab sh <stack> <service>"
+    dc "$1" exec "$2" sh -c 'command -v bash >/dev/null && exec bash || exec sh' ;;
+  compose)
+    [[ $# -ge 2 ]] || die "usage: lab compose <stack> <compose args...>"
+    dc "$@" ;;
+  render)
+    render_all; echo "rendered into $RENDER_DIR and stacks/*/.env" ;;
+  reload)
+    [[ "${1:-caddy}" == caddy ]] || die "only 'lab reload caddy' exists"
+    render_all; caddy_reload ;;
+  doctor|check)
+    run_doctor || { HOMELAB_DIED=1; exit 1; } ;;
+  config)
+    [[ $# -eq 2 ]] || die "usage: lab config <stack> <KEY>"
+    f="$STACKS_DIR/$1/.env"; [[ -f "$f" ]] || die "no $f (enable the stack and run lab render)"
+    read -r -s -p "$2 for $1 (input hidden): " val </dev/tty; echo
+    env_set "$f" "$2" "$val"; echo "saved; apply with: ./lab up $1" ;;
+  secret)
+    [[ $# -eq 2 ]] || die "usage: lab secret <stack> <KEY>"
+    env_get "$STACKS_DIR/$1/.env" "$2"; echo ;;
+  backup)
+    case "${1:-status}" in
+      now)    sudo systemctl start --no-block homelab-backup.service
+              echo "started; follow with: ./lab backup log" ;;
+      status) systemctl list-timers homelab-backup.timer --no-pager
+              systemctl status homelab-backup.service --no-pager -n 0 || true ;;
+      log)    sudo tail -n 50 -f /var/log/homelab-backup.log ;;
+      *)      die "usage: lab backup [now|status|log]" ;;
+    esac ;;
+  restore)
+    run_restore "$@" ;;
+  help|-h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command: $cmd (try: lab help)" ;;
+esac

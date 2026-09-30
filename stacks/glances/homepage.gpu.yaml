@@ -1,0 +1,6 @@
+- GPU Usage:
+    widget:
+      type: glances
+      url: http://host.docker.internal:61208
+      version: 4
+      metric: gpu:nvidia0

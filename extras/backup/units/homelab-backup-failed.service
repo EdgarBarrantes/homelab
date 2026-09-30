@@ -1,0 +1,6 @@
+[Unit]
+Description=Send an alert that the homelab backup failed
+
+[Service]
+Type=oneshot
+ExecStart=${ROOT}/extras/backup/notify-failure.sh

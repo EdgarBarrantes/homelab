@@ -1,0 +1,5 @@
+- Actual Budget:
+    icon: actual-budget.png
+    href: https://budget.${DOMAIN}
+    siteMonitor: https://budget.${DOMAIN}
+    description: Envelope budgeting

@@ -1,0 +1,34 @@
+name: backrest
+
+# Web UI for the restic repository the nightly backup (extras/backup, a
+# systemd timer, not a container) writes to: browse and restore. No
+# schedule inside Backrest: the timer is the only thing that runs backups.
+services:
+  backrest:
+    image: ghcr.io/garethgeorge/backrest:v1.14.1
+    container_name: backrest
+    restart: unless-stopped
+    networks: [default, proxy]
+    environment:
+      BACKREST_DATA: /data
+      BACKREST_CONFIG: /config/config.json
+      XDG_CACHE_HOME: /cache
+      TMPDIR: /tmp
+    volumes:
+      - ./data:/data
+      - ./config:/config
+      - ./cache:/cache
+      - ./tmp:/tmp
+      # Add it in Backrest as a repository at /repos/main, with the password
+      # from /etc/homelab/restic-password.
+      - ${BACKUP_DIR}/restic-repo:/repos/main
+    healthcheck:
+      test: wget -q -O /dev/null http://localhost:9898/ || exit 1
+      start_period: 20s
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  proxy:
+    external: true

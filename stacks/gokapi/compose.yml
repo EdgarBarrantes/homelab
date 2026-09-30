@@ -1,0 +1,29 @@
+name: gokapi
+
+# Expiring file shares. Admin account and settings come from Gokapi's own
+# /setup wizard on first start and live in ./config.
+services:
+  gokapi:
+    image: f0rc3/gokapi:v2.2.4
+    container_name: gokapi
+    restart: unless-stopped
+    networks: [default, proxy]
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    # Loopback only, for cloudflared (public download links at
+    # send.$PUBLIC_DOMAIN). Private admin/upload goes through Caddy.
+    ports:
+      - "127.0.0.1:53842:53842"
+    healthcheck:
+      test: wget -q -O /dev/null http://localhost:53842/ || exit 1
+      start_period: 20s
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  proxy:
+    external: true

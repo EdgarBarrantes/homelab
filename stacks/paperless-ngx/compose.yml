@@ -1,0 +1,81 @@
+name: paperless-ngx
+
+# Document management: OCR and index everything dropped into the consume
+# folder, search it from the web UI. https://docs.paperless-ngx.com
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: paperless_redis
+    restart: unless-stopped
+    volumes:
+      - ./data/redis:/data
+
+  db:
+    image: postgres:16-alpine
+    container_name: paperless_db
+    restart: unless-stopped
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: pg_isready -U paperless
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:3.1
+    container_name: paperless_webserver
+    restart: unless-stopped
+    # OCR and indexing are CPU-heavy.
+    labels:
+      lab.tier: heavy
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [default, proxy]
+    volumes:
+      - ./data/data:/usr/src/paperless/data
+      - ./data/media:/usr/src/paperless/media
+      - ./data/export:/usr/src/paperless/export
+      # Your real inbox (e.g. synced from a phone scanner app via Syncthing).
+      - ${PAPERLESS_CONSUME_DIR}:/usr/src/paperless/consume
+    env_file: .env
+    environment:
+      USERMAP_UID: ${PUID}
+      USERMAP_GID: ${PGID}
+      PAPERLESS_REDIS: redis://paperless_redis:6379
+      PAPERLESS_DBHOST: paperless_db
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: ${POSTGRES_PASSWORD}
+      PAPERLESS_URL: https://docs.${DOMAIN}
+      PAPERLESS_TIME_ZONE: ${TZ}
+      PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-eng}
+      PAPERLESS_OCR_LANGUAGES: ${PAPERLESS_OCR_LANGUAGES:-}
+      # Tuned for photographed receipts: PSM 6 assumes one uniform text
+      # block; deskew/clean fix phone-camera skew and noise.
+      PAPERLESS_OCR_USER_ARGS: '{"tesseract_pagesegmode": 6, "deskew": true, "clean": true}'
+      # Phone scanner apps (e.g. MakeACopy) drop a .txt OCR sidecar next to
+      # each PDF; without this Paperless imports it as its own document.
+      PAPERLESS_CONSUMER_IGNORE_PATTERNS: '["^.*\\.txt$"]'
+      # File on disk as year/type/title instead of DOC_<timestamp>.
+      PAPERLESS_FILENAME_FORMAT: "{{ created_year }}/{{ document_type }}/{{ title }}"
+      PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER}
+      PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY}
+    healthcheck:
+      test: curl -f -s -o /dev/null http://localhost:8000/ || exit 1
+      start_period: 90s
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  proxy:
+    external: true
