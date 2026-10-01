@@ -111,7 +111,7 @@ is_enabled() { [[ " ${STACKS:-} " == *" $1 "* ]]; }
 stack_meta() {
   ( # subshell: stack.conf variables must not leak
     DESCRIPTION='' GROUP='' HOST='' PUBLIC='' PUBLIC_PORT='' NEEDS='' GPU=''
-    HEAVY='' RAM_GB=0 DISK_GB=0 SECRETS='' OVERLAYS='' DIRS='' PROFILES=''
+    HEAVY='' RAM_GB=0 DISK_GB=0 SECRETS='' OVERLAYS='' DIRS='' PROFILES='' TEST_WITH=''
     CONTAINERS='' BACKUP_PATHS=''
     PG_CONTAINER='' PG_SERVICE='' PG_USER='' PG_DUMP='' PG_PASSWORD_KEY='' PG_DATA=''
     # shellcheck disable=SC1090

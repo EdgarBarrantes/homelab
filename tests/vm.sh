@@ -13,6 +13,14 @@
 #   tests/vm.sh down      delete the VM
 #   tests/vm.sh all       up, install, verify, rerun, verify, restore, rebuild
 #
+# Scoped runs, for a change to one or a few stacks (fresh VM, install,
+# verify; the rerun, restore and rebuild drills belong to the full suite):
+#   tests/vm.sh changed [base]   test what changed since base (origin/master):
+#                                full suite, only some stacks, or nothing
+#   tests/vm.sh stacks "a b"     only these stacks (plus what they need)
+#   tests/vm.sh scope [base]     just print what `changed` would test
+# Scope rules are in tests/scope.sh; per-stack checks in tests/stacks/<s>.sh.
+#
 # Needs: incus (user in incus-admin), KVM. VM name: $VM (default homelab-test).
 set -euo pipefail
 
@@ -71,7 +79,13 @@ install() {
   tar -C "$HERE/fixtures/overlay" -cf - . | ssh_vm 'mkdir -p ~/overlay && tar -xf - -C ~/overlay'
   # The test config only on the first install: later tests change it on
   # purpose (restore-test moves the photos), and a rerun must keep that.
-  local cfg=(--config "$HERE/vm.env")
+  # TEST_STACKS (scoped runs) replaces the stack list in the test config.
+  local env="$HERE/vm.env"
+  if [[ -n "${TEST_STACKS:-}" ]]; then
+    mkdir -p "$STATE"; env="$STATE/vm.env"
+    sed "s|^STACKS=.*|STACKS=\"$TEST_STACKS\"|" "$HERE/vm.env" > "$env"
+  fi
+  local cfg=(--config "$env")
   ssh_vm 'test -f homelab/homelab.env' && cfg=()
   timeout --foreground 45m "$ROOT/install.sh" --host "ubuntu@$ip" "${cfg[@]}" --yes
 }
@@ -82,8 +96,14 @@ verify() {
   ssh_vm 'cd homelab && ./lab doctor'
   log "HTTPS from the host through the VM's Caddy (internal CA)"
   ssh_vm 'cat homelab/rendered/caddy-local-ca.crt' > "$STATE/ca.crt"
-  local h code fails=0
-  for h in dash photos docs budget files books backrest glances map hello; do
+  # Hostnames of the installed stacks, plus the map and the overlay's route.
+  local stacks s h code fails=0 hosts="map hello"
+  stacks="$(ssh_vm 'source <(grep "^STACKS=" homelab/homelab.env); echo $STACKS')"
+  for s in $stacks; do
+    h="$(sed -n 's/^HOST=//p' "$ROOT/stacks/$s/stack.conf" | tr -d '"')" # none for caddy
+    if [[ -n "$h" ]]; then hosts+=" $h"; fi
+  done
+  for h in $hosts; do
     code="$(curl -s -o /dev/null -m 20 -w '%{http_code}' --cacert "$STATE/ca.crt" \
       --resolve "$h.homelab.internal:443:$ip" "https://$h.homelab.internal/" || true)"
     printf '  %-12s %s\n' "$h" "$code"
@@ -99,21 +119,39 @@ verify() {
   curl -s -m 10 --cacert "$STATE/ca.crt" --resolve "map.homelab.internal:443:$ip" https://map.homelab.internal/topology.md | grep -q overlay-marker \
     && echo "  map: ok" || { echo "  map: FAIL"; fails=$((fails + 1)); }
   ssh_vm 'grep -q "extra.example.test" homelab/rendered/cloudflared/config.yml' && echo "  tunnel entry: ok" || { echo "  tunnel entry: FAIL"; fails=$((fails + 1)); }
-  log "book import folder"
-  # Copied in whole (never written in place), as the import folder expects.
-  ssh_vm 'source <(grep "^BOOKS" homelab/homelab.env); mkdir -p ~/tmp && cat > ~/tmp/t.epub && mv ~/tmp/t.epub "$BOOKS_IMPORT_DIR/import-test.epub"
-    for _ in $(seq 1 60); do
-      [[ ! -e "$BOOKS_IMPORT_DIR/import-test.epub" ]] && find "$BOOKS_DIR" -path "*Homelab Import Test*" -name "*.epub" | grep -q . && exit 0
-      sleep 5
-    done; exit 1' < "$HERE/fixtures/import-test.epub" \
-    && echo "  imported into the library: ok" || { echo "  import: FAIL"; fails=$((fails + 1)); }
+  log "per-stack checks"
+  for s in $stacks; do
+    [[ -f "$HERE/stacks/$s.sh" ]] || continue
+    # shellcheck disable=SC1090
+    ( source "$HERE/stacks/$s.sh" ) || { echo "  $s: FAIL"; fails=$((fails + 1)); }
+  done
   log "backup run"
   ssh_vm 'sudo systemctl start homelab-backup.service; systemctl show homelab-backup.service -p Result --value; sudo tail -n 8 /var/log/homelab-backup.log; sudo ls /srv/backup /srv/backup/db-dumps'
-  ((fails == 0)) || { echo "$fails route(s) failed"; exit 1; }
+  ((fails == 0)) || { echo "$fails check(s) failed"; exit 1; }
   log "verify passed"
 }
 
 down() { log "deleting $VM"; incus delete -f "$VM" 2>/dev/null || true; }
+
+full() {
+  up; install; verify; install; verify
+  ssh_vm -t 'cd homelab && tests/restore-test.sh'
+  ssh_vm -t 'bash homelab/tests/rebuild-test.sh'
+}
+
+# scoped <scope.sh output>: a fresh VM with only those stacks.
+scoped() {
+  case "$1" in
+    none) log "docs-only change: nothing to test in a VM" ;;
+    full) log "shared code changed: full suite"; full ;;
+    stacks\ *)
+      export TEST_STACKS="${1#stacks }"
+      log "scoped run: $TEST_STACKS"
+      down; up; install; verify
+      log "scoped run passed: $TEST_STACKS" ;;
+    *) echo "unexpected scope: $1"; exit 1 ;;
+  esac
+}
 
 case "${1:-all}" in
   up) up ;;
@@ -124,8 +162,10 @@ case "${1:-all}" in
   rebuild) log "rebuild from backups (in the VM)"; ssh_vm -t 'bash homelab/tests/rebuild-test.sh' ;;
   ssh) ssh_vm -t 'cd homelab 2>/dev/null; exec bash -l' ;;
   down) down ;;
-  all) up; install; verify; install; verify
-       ssh_vm -t 'cd homelab && tests/restore-test.sh'
-       ssh_vm -t 'bash homelab/tests/rebuild-test.sh' ;;
-  *) sed -n '2,17p' "$0"; exit 1 ;;
+  all) full ;;
+  scope) "$HERE/scope.sh" "${2:-origin/master}" ;;
+  changed) scoped "$("$HERE/scope.sh" "${2:-origin/master}")" ;;
+  stacks) [[ -n "${2:-}" ]] || { echo 'usage: tests/vm.sh stacks "a b"'; exit 1; }
+          scoped "$("$HERE/scope.sh" --stacks "$2")" ;;
+  *) sed -n '2,26p' "$0"; exit 1 ;;
 esac
