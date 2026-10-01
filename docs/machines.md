@@ -122,7 +122,9 @@ The server's user needs `sudo`.
   them to the home screen).
 - Optional document pipeline: a scanner app (I use MakeACopy) saving PDFs
   into a folder that **Syncthing** syncs to `PAPERLESS_CONSUME_DIR` on the
-  server. Paperless imports anything that lands there.
+  server. Paperless imports anything that lands there. The same works for
+  ebooks: sync a folder to `BOOKS_IMPORT_DIR` and Calibre-Web Automated adds
+  each book to the library (and removes it from that folder).
 - Optional: the **Home Assistant** companion app, with the internal URL
   set to HA's LAN address so home control works even if the server is off.
 

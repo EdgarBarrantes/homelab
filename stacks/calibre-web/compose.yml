@@ -1,12 +1,17 @@
 name: calibre-web
 
-# Web UI for a Calibre library (read in the browser, download,
-# send-to-ereader, OPDS for reader apps). Calibre desktop can share the same
-# folder, just not while both are writing (metadata.db is SQLite).
-# Settings live in ./config/app.db. First login: admin / admin123, change it.
+# Calibre-Web Automated: Calibre-Web plus an import folder. Books dropped
+# into BOOKS_IMPORT_DIR are converted (EPUB by default), get their metadata
+# fetched and are added to the library, then DELETED from that folder (the
+# originals are kept in ./config/processed_books). Copy finished files in,
+# don't download straight into it. Also: Kobo and KOReader sync, OPDS,
+# send-to-ereader. Calibre desktop can share the library folder, just not
+# while both are writing (metadata.db is SQLite).
+# Settings live in ./config/app.db (same format as stock Calibre-Web, so an
+# old ./config carries over). First login: admin / admin123, change it.
 services:
   calibre-web:
-    image: lscr.io/linuxserver/calibre-web:0.6.27
+    image: crocodilestick/calibre-web-automated:v4.0.8
     container_name: calibre-web
     restart: unless-stopped
     networks: [default, proxy]
@@ -14,15 +19,13 @@ services:
       PUID: ${PUID}
       PGID: ${PGID}
       TZ: ${TZ}
-      # Real Calibre binaries for format conversion and send-to-ereader. In
-      # Admin -> Basic Configuration -> External binaries, set /usr/bin.
-      DOCKER_MODS: linuxserver/mods:universal-calibre-v9.15.0
     volumes:
       - ./config:/config
-      - ${BOOKS_DIR}:/books
+      - ${BOOKS_DIR}:/calibre-library
+      - ${BOOKS_IMPORT_DIR:?set BOOKS_IMPORT_DIR in homelab.env}:/cwa-book-ingest
     healthcheck:
       test: curl -fs -o /dev/null http://localhost:8083/ || exit 1
-      start_period: 60s # the Calibre mod install makes first boot slow
+      start_period: 120s # first boot sets up the library and its services
       interval: 30s
       timeout: 5s
       retries: 5

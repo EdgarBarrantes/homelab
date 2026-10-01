@@ -99,6 +99,14 @@ verify() {
   curl -s -m 10 --cacert "$STATE/ca.crt" --resolve "map.homelab.internal:443:$ip" https://map.homelab.internal/topology.md | grep -q overlay-marker \
     && echo "  map: ok" || { echo "  map: FAIL"; fails=$((fails + 1)); }
   ssh_vm 'grep -q "extra.example.test" homelab/rendered/cloudflared/config.yml' && echo "  tunnel entry: ok" || { echo "  tunnel entry: FAIL"; fails=$((fails + 1)); }
+  log "book import folder"
+  # Copied in whole (never written in place), as the import folder expects.
+  ssh_vm 'source <(grep "^BOOKS" homelab/homelab.env); mkdir -p ~/tmp && cat > ~/tmp/t.epub && mv ~/tmp/t.epub "$BOOKS_IMPORT_DIR/import-test.epub"
+    for _ in $(seq 1 60); do
+      [[ ! -e "$BOOKS_IMPORT_DIR/import-test.epub" ]] && find "$BOOKS_DIR" -path "*Homelab Import Test*" -name "*.epub" | grep -q . && exit 0
+      sleep 5
+    done; exit 1' < "$HERE/fixtures/import-test.epub" \
+    && echo "  imported into the library: ok" || { echo "  import: FAIL"; fails=$((fails + 1)); }
   log "backup run"
   ssh_vm 'sudo systemctl start homelab-backup.service; systemctl show homelab-backup.service -p Result --value; sudo tail -n 8 /var/log/homelab-backup.log; sudo ls /srv/backup /srv/backup/db-dumps'
   ((fails == 0)) || { echo "$fails route(s) failed"; exit 1; }

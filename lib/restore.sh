@@ -83,7 +83,7 @@ rs_rehome_env() {
   local k v n
   env_set "$HOMELAB_ENV" PUID "$(id -u)"
   env_set "$HOMELAB_ENV" PGID "$(id -g)"
-  for k in PHOTOS_DIR BOOKS_DIR PAPERLESS_CONSUME_DIR LOCAL_DIR; do
+  for k in PHOTOS_DIR BOOKS_DIR BOOKS_IMPORT_DIR PAPERLESS_CONSUME_DIR LOCAL_DIR; do
     v="$(env_get "$HOMELAB_ENV" "$k")"; [[ -n "$v" ]] || continue
     n="$(rs_rehome_path "$v")"
     [[ "$n" == "$v" ]] || { env_set "$HOMELAB_ENV" "$k" "$n"; warn "$k: $v -> $n (this machine's home)"; }

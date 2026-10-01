@@ -135,6 +135,8 @@ Point *.<this> at this machine's Tailscale IP in Cloudflare DNS." "${DOMAIN:-hom
     "$( [[ "${PHOTOS_DIR:-}" == /home/you/* || -z "${PHOTOS_DIR:-}" ]] && echo "$HOME/Pictures/Immich" || echo "$PHOTOS_DIR")")"
   [[ " $STACKS " == *" calibre-web "* ]] && set_ BOOKS_DIR "$(w_input "Calibre library folder:" \
     "$( [[ "${BOOKS_DIR:-}" == /home/you/* || -z "${BOOKS_DIR:-}" ]] && echo "$HOME/Calibre Library" || echo "$BOOKS_DIR")")"
+  [[ " $STACKS " == *" calibre-web "* ]] && set_ BOOKS_IMPORT_DIR "$(w_input "Book import folder (books copied here are added to the library, then removed):" \
+    "$( [[ "${BOOKS_IMPORT_DIR:-}" == /home/you/* || -z "${BOOKS_IMPORT_DIR:-}" ]] && echo "$HOME/Books/import" || echo "$BOOKS_IMPORT_DIR")")"
   [[ " $STACKS " == *" paperless-ngx "* ]] && set_ PAPERLESS_CONSUME_DIR "$(w_input "Paperless inbox folder (files dropped here get imported):" \
     "$( [[ "${PAPERLESS_CONSUME_DIR:-}" == /home/you/* || -z "${PAPERLESS_CONSUME_DIR:-}" ]] && echo "$HOME/Documents/Paperless" || echo "$PAPERLESS_CONSUME_DIR")")"
 

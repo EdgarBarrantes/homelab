@@ -175,11 +175,11 @@ host: files.home.example.com
 Expiring download links; uploads stay private, downloads go out via send.example.com.
 
 ### app: calibre-web
-label: Calibre-Web
+label: Calibre-Web Automated
 sub: ebooks
 host: books.home.example.com
 
-Ebook library in the browser, OPDS for reader apps.
+Ebook library in the browser, OPDS for reader apps. Books copied into the import folder are converted, tagged and added on their own.
 
 ### app: openwebui
 label: Open WebUI

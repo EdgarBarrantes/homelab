@@ -1,3 +1,4 @@
-Calibre-Web (https://books.${DOMAIN}): log in as admin / admin123 and change it.
-  Database location: /books (needs a metadata.db: an existing Calibre library,
-  or create one with Calibre desktop). External binaries path: /usr/bin.
+Calibre-Web Automated (https://books.${DOMAIN}): log in as admin / admin123 and change it.
+  The library is ${BOOKS_DIR} (created if empty). To add books, copy them into
+  ${BOOKS_IMPORT_DIR}: they are imported, then removed from that folder.
+  Import options (target format, formats to ignore): Admin -> CWA Settings.
