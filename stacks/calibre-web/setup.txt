@@ -5,3 +5,5 @@ Calibre-Web Automated (https://books.${DOMAIN}): log in as admin / admin123 and 
   Then in Admin -> CWA Settings, add pdf and djvu to the formats NOT to convert:
   converting PDFs to EPUB is slow (minutes per file, one file at a time) and
   loses the layout.
+  Optional: Hardcover as a metadata source: ./lab config calibre-web HARDCOVER_TOKEN
+  (key from https://hardcover.app/account/api), then ./lab up calibre-web.

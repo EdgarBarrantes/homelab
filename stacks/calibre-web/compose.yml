@@ -27,6 +27,10 @@ services:
       PUID: ${PUID}
       PGID: ${PGID}
       TZ: ${TZ}
+      # Optional: Hardcover as a metadata source (key from
+      # https://hardcover.app/account/api). Set it with
+      # `./lab config calibre-web HARDCOVER_TOKEN`, then `./lab up calibre-web`.
+      HARDCOVER_TOKEN: ${HARDCOVER_TOKEN:-}
     volumes:
       - ./config:/config
       - ${BOOKS_DIR}:/calibre-library
