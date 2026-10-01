@@ -7,6 +7,14 @@ name: calibre-web
 # don't download straight into it. Also: Kobo and KOReader sync, OPDS,
 # send-to-ereader. Calibre desktop can share the library folder, just not
 # while both are writing (metadata.db is SQLite).
+# Known in v4.0.8: the folder watcher ignores .djvu files (the importer
+# itself handles them; run it by hand:
+#   ./lab compose calibre-web exec -u abc -e HOME=/config calibre-web sh -c \
+#     'cd /app/calibre-web-automated/scripts && for f in /cwa-book-ingest/*.djvu;
+#      do python3 ingest_processor.py "$f"; done'),
+# and macOS "._*" files from a copied folder get imported as junk books:
+# delete them first. Run calibredb as -u abc too: as root it leaves root-owned
+# files in the library and every later import fails to chown it.
 # Settings live in ./config/app.db (same format as stock Calibre-Web, so an
 # old ./config carries over). First login: admin / admin123, change it.
 services:

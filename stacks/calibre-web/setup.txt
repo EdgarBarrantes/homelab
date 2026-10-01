@@ -2,3 +2,6 @@ Calibre-Web Automated (https://books.${DOMAIN}): log in as admin / admin123 and 
   The library is ${BOOKS_DIR} (created if empty). To add books, copy them into
   ${BOOKS_IMPORT_DIR}: they are imported, then removed from that folder.
   Import options (target format, formats to ignore): Admin -> CWA Settings.
+  Then in Admin -> CWA Settings, add pdf and djvu to the formats NOT to convert:
+  converting PDFs to EPUB is slow (minutes per file, one file at a time) and
+  loses the layout.
