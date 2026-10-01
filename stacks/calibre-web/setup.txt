@@ -7,3 +7,12 @@ Calibre-Web Automated (https://books.${DOMAIN}): log in as admin / admin123 and 
   loses the layout.
   Optional: Hardcover as a metadata source: ./lab config calibre-web HARDCOVER_TOKEN
   (key from https://hardcover.app/account/api), then ./lab up calibre-web.
+  E-readers with KOReader (e.g. a jailbroken Kindle): add the OPDS catalog
+  https://books.${DOMAIN}/opds to browse and download over Wi-Fi. Use a separate
+  Calibre-Web user with only view/download (KOReader keeps the password in plain
+  text). Reading progress sync: Admin -> CWA Settings -> "Enable KOReader Sync",
+  install the plugin from https://books.${DOMAIN}/kosync and set its server to
+  https://books.${DOMAIN} (the plugin adds /kosync itself). A device without
+  Tailscale needs a LAN DNS entry (router) pointing books.${DOMAIN} at this
+  machine's LAN IP: Caddy answers on 443 there too. OPDS doesn't list DjVu;
+  copy those over USB.
