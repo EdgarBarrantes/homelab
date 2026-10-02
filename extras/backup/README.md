@@ -60,8 +60,9 @@ Test it: `sudo systemctl start homelab-backup-failed.service`.
 
 A failure alert can't fire when nothing runs at all (timer stopped, machine
 off). Set `BACKUP_HEARTBEAT_URL` in `extras/backup/.env` and every
-successful run POSTs `{"host", "status": "ok", "snapshot", "checked"}`
-there (`checked` is true after the Sunday `restic check`). Point it at a
+successful run POSTs `{"host", "status": "ok", "snapshot", "checked",
+"offsite"}` there (`checked` is true after the Sunday `restic check`;
+`offsite` is `ok`, `failed` or `off`, see below). Point it at a
 push monitor (healthchecks.io, Uptime Kuma) or at a second Home Assistant
 webhook that records the time, plus an hourly check that alerts when it
 gets old:
@@ -98,6 +99,45 @@ template:
         device_class: timestamp
         state: "{{ now().isoformat() }}"
 ```
+
+## Off-site copy
+
+A backup target in the same building shares its fate (fire, theft, a
+surge). `BACKUP_OFFSITE` in homelab.env names a second restic repository
+that every run fills with `restic copy` after the local backup: a separate
+repository, not a mirror of the folder, so damage or deletions in the
+local one don't spread. It uses the same password, keeps the same
+retention, is checked on Sundays and pruned on the 1st of the month. The
+database dumps are part of every snapshot, so they go along.
+
+Any restic backend works; for cloud storage you already pay for, use
+rclone. With Google Drive:
+
+1. Install rclone (the official .deb from rclone.org; distro packages are
+   often too old) and create your own OAuth client in Google Cloud Console
+   (Drive API on, consent screen published to *Production*: in "Testing"
+   the login expires after 7 days; client type *Desktop app*).
+2. As yourself: `rclone config`, a remote named `gdrive`, type `drive`,
+   your client id and secret, scope `drive.file` (rclone only sees what it
+   creates), browser login. Test: `rclone mkdir gdrive:homelab`.
+3. Hand it to root, which runs the backups, and keep one copy only:
+   `sudo install -m 600 -o root -g root ~/.config/rclone/rclone.conf /etc/homelab/rclone.conf`
+   then `rm ~/.config/rclone/rclone.conf`.
+4. In homelab.env: `BACKUP_OFFSITE=rclone:gdrive:homelab/restic` and,
+   optionally, `BACKUP_OFFSITE_LIMIT_KBPS=1500` (about 12 Mbit/s) so the
+   first upload, which carries everything, leaves room for other traffic.
+   Later runs only send what changed.
+
+The folder in Drive holds encrypted pack files, not browsable copies.
+Reading it back, e.g. after losing the local target:
+
+```bash
+sudo RCLONE_CONFIG=/etc/homelab/rclone.conf restic \
+  -r rclone:gdrive:homelab/restic --password-file /etc/homelab/restic-password snapshots
+```
+
+then `restic restore` as usual (the dumps are under the backup folder's
+`db-dumps/` path inside the snapshot).
 
 ## Rebuilding a machine from its backups
 

@@ -114,6 +114,8 @@ if running ollama; then
     docker exec ollama ollama list 2>/dev/null | awk 'NR > 1 { print $1 }' > "$META/ollama-models.txt" || true
 fi
 paths+=("$META")
+# The dumps also go into the snapshots, so the off-site copy has them.
+paths+=("$DB_DUMP_DIR")
 while IFS=$'\t' read -r kind p; do
     case "$kind" in root|host) ;; *) paths+=("$p") ;; esac
 done < "$META/info.txt"
@@ -156,6 +158,45 @@ if [ "${#paths[@]}" -gt 0 ]; then
     fi
 fi
 
+# Off-site copy (BACKUP_OFFSITE, e.g. rclone:gdrive:homelab/restic): a
+# second, separate restic repo filled with `restic copy`, so damage to the
+# local repo can't spread to it. Same password. A failure here doesn't fail
+# the run (the local backup is done); it's reported in the heartbeat.
+offsite=off
+if [ -n "${BACKUP_OFFSITE:-}" ] && [ "${#paths[@]}" -gt 0 ]; then
+    [ -f /etc/homelab/rclone.conf ] && export RCLONE_CONFIG=/etc/homelab/rclone.conf
+    limit=()
+    [ -n "${BACKUP_OFFSITE_LIMIT_KBPS:-}" ] && limit=(--limit-upload "$BACKUP_OFFSITE_LIMIT_KBPS")
+    set +e
+    (
+        set -e
+        if ! restic -r "$BACKUP_OFFSITE" cat config >/dev/null 2>&1; then
+            log "Initialising off-site repository $BACKUP_OFFSITE..."
+            restic -r "$BACKUP_OFFSITE" init --from-repo "$RESTIC_REPO" \
+                --from-password-file "$RESTIC_PASSWORD_FILE" --copy-chunker-params
+        fi
+        restic -r "$BACKUP_OFFSITE" unlock || true
+        log "Copying new snapshots off-site..."
+        retry restic -r "$BACKUP_OFFSITE" copy --from-repo "$RESTIC_REPO" \
+            --from-password-file "$RESTIC_PASSWORD_FILE" "${limit[@]}"
+        retry restic -r "$BACKUP_OFFSITE" forget --group-by host,tags \
+            --keep-daily 7 --keep-weekly 4 --keep-monthly 6
+        # Pruning rewrites packs (download and upload): monthly is enough.
+        if [ "$(date +%d)" = 01 ]; then
+            log "Pruning the off-site repository..."
+            retry restic -r "$BACKUP_OFFSITE" prune "${limit[@]}"
+        fi
+        if [ "$(date +%u)" = 7 ]; then
+            log "Sunday: checking the off-site repository..."
+            retry restic -r "$BACKUP_OFFSITE" check
+        fi
+    )
+    rc=$?
+    set -e
+    if [ "$rc" = 0 ]; then offsite=ok; log "Off-site copy done."
+    else offsite=failed; log "WARN: off-site copy failed (exit $rc)"; fi
+fi
+
 log "Backup complete."
 
 # Dead man's switch: tell BACKUP_HEARTBEAT_URL that this run succeeded, so a
@@ -170,8 +211,8 @@ if [ -n "$heartbeat_url" ]; then
             | python3 -c 'import json, sys; s = json.load(sys.stdin); print(s[0]["short_id"] if s else "")' \
             2>/dev/null || true)"
     fi
-    python3 -c 'import json, sys; print(json.dumps({"host": sys.argv[1], "status": "ok", "snapshot": sys.argv[2], "checked": sys.argv[3] == "yes"}))' \
-        "$HOMELAB_NAME" "$snapshot" "$checked" \
+    python3 -c 'import json, sys; print(json.dumps({"host": sys.argv[1], "status": "ok", "snapshot": sys.argv[2], "checked": sys.argv[3] == "yes", "offsite": sys.argv[4]}))' \
+        "$HOMELAB_NAME" "$snapshot" "$checked" "$offsite" \
         | curl -fsS -m 20 --retry 3 --retry-delay 10 --retry-all-errors -o /dev/null \
             -X POST -H 'Content-Type: application/json' --data-binary @- "$heartbeat_url" \
         && log "Heartbeat sent." || log "WARN: heartbeat to BACKUP_HEARTBEAT_URL failed"

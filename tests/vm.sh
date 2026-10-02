@@ -137,9 +137,17 @@ http.server.HTTPServer(("127.0.0.1", 8098), H).handle_request()
 PY
   ssh_vm 'rm -f /tmp/heartbeat.json; setsid nohup timeout 1800 python3 /tmp/hb.py >/dev/null 2>&1 < /dev/null &
     cd homelab && touch extras/backup/.env && source lib/common.sh && env_set extras/backup/.env BACKUP_HEARTBEAT_URL http://127.0.0.1:8098/'
+  # Off-site copy through rclone, with a local folder standing in for the cloud.
+  ssh_vm 'command -v rclone >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rclone >/dev/null
+    printf "[offsite]\ntype = local\n" | sudo install -m 600 /dev/stdin /etc/homelab/rclone.conf
+    cd homelab && source lib/common.sh && env_set homelab.env BACKUP_OFFSITE rclone:offsite:/srv/offsite/restic'
   ssh_vm 'sudo systemctl start homelab-backup.service; systemctl show homelab-backup.service -p Result --value; sudo tail -n 8 /var/log/homelab-backup.log; sudo ls /srv/backup /srv/backup/db-dumps'
   if ssh_vm 'grep -q "\"status\": \"ok\"" /tmp/heartbeat.json && cat /tmp/heartbeat.json'; then echo "  heartbeat: ok"
   else echo "  heartbeat: FAIL"; fails=$((fails + 1)); fi
+  if ssh_vm 'grep -q "\"offsite\": \"ok\"" /tmp/heartbeat.json \
+      && sudo RCLONE_CONFIG=/etc/homelab/rclone.conf restic -r rclone:offsite:/srv/offsite/restic \
+           --password-file /etc/homelab/restic-password snapshots --compact | tail -n 3'; then echo "  off-site copy: ok"
+  else echo "  off-site copy: FAIL"; fails=$((fails + 1)); fi
   ((fails == 0)) || { echo "$fails check(s) failed"; exit 1; }
   log "verify passed"
 }
