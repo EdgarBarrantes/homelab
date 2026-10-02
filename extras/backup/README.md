@@ -56,6 +56,49 @@ actions:
 and `BACKUP_NOTIFY_URL=http://<ha-lan-ip>:8123/api/webhook/<long-random-id>`.
 Test it: `sudo systemctl start homelab-backup-failed.service`.
 
+## Missed-backup alerts (dead man's switch)
+
+A failure alert can't fire when nothing runs at all (timer stopped, machine
+off). Set `BACKUP_HEARTBEAT_URL` in `extras/backup/.env` and every
+successful run POSTs `{"host", "status": "ok", "snapshot", "checked"}`
+there (`checked` is true after the Sunday `restic check`). Point it at a
+push monitor (healthchecks.io, Uptime Kuma) or at a second Home Assistant
+webhook that records the time, plus an hourly check that alerts when it
+gets old:
+
+```yaml
+automation:
+  - alias: Backup heartbeat
+    triggers:
+      - trigger: webhook
+        webhook_id: <another-long-random-id>
+        allowed_methods: [POST]
+        local_only: true
+    actions:
+      - event: homelab_backup_ok
+  - alias: Backup overdue
+    triggers:
+      - trigger: time_pattern
+        minutes: 7
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ now() - (states('sensor.homelab_backup_last_success')
+             | as_datetime(now() - timedelta(days=99))) > timedelta(hours=36) }}
+    actions:
+      - action: notify.mobile_app_<your_phone>
+        data:
+          message: No successful backup for over 36 hours.
+template:
+  - triggers:
+      - trigger: event
+        event_type: homelab_backup_ok
+    sensor:
+      - name: Homelab backup last success
+        device_class: timestamp
+        state: "{{ now().isoformat() }}"
+```
+
 ## Rebuilding a machine from its backups
 
 When the disk is gone and only the backups and the restic password (from

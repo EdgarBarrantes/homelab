@@ -21,3 +21,5 @@ services:
       ACTUAL_HTTP_API_KEY: ${ACTUAL_HTTP_API_KEY}
       ACTUAL_BUDGET_SYNC_ID: ${ACTUAL_BUDGET_SYNC_ID}
       ACTUAL_ACCOUNT_NAME: Receipts
+      # no = still detect receipts and set Amount, but post nothing to Actual.
+      ACTUAL_POST_RECEIPTS: ${PAPERLESS_ACTUAL_POST:-yes}

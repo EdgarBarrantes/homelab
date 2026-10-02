@@ -38,6 +38,9 @@ ACTUAL_API_URL = os.environ.get("ACTUAL_HTTP_API_URL", "")
 ACTUAL_API_KEY = os.environ.get("ACTUAL_HTTP_API_KEY", "")
 ACTUAL_SYNC_ID = os.environ.get("ACTUAL_BUDGET_SYNC_ID", "")
 ACTUAL_ACCOUNT_NAME = os.environ.get("ACTUAL_ACCOUNT_NAME", "Receipts")
+# PAPERLESS_ACTUAL_POST=no in homelab.env: receipts still get Amount (and no
+# Expense), so they can be posted later, but nothing reaches Actual.
+ACTUAL_POST = os.environ.get("ACTUAL_POST_RECEIPTS", "yes").lower() not in ("no", "false", "0")
 
 CYRILLIC_RE = re.compile(r"[Ѐ-ӿ]")
 SPANISH_RE = re.compile(r"[ñÑ]|\b(factura|total|fecha|gracias|impuesto)\b", re.IGNORECASE)
@@ -344,7 +347,7 @@ def main():
         if amount_id:
             field_updates[str(amount_id)] = details["amount_eur"]
 
-        if actual_configured():
+        if actual_configured() and ACTUAL_POST:
             try:
                 account_id = get_or_create_actual_account(ACTUAL_ACCOUNT_NAME)
                 category_id = categories.get(details.get("category"))

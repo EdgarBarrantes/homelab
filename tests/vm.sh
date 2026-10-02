@@ -125,8 +125,21 @@ verify() {
     # shellcheck disable=SC1090
     ( source "$HERE/stacks/$s.sh" ) || { echo "  $s: FAIL"; fails=$((fails + 1)); }
   done
-  log "backup run"
+  log "backup run (heartbeat to a listener in the VM)"
+  ssh_vm 'cat > /tmp/hb.py' <<'PY'
+import http.server
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        open("/tmp/heartbeat.json", "wb").write(body)
+        self.send_response(200); self.end_headers()
+http.server.HTTPServer(("127.0.0.1", 8098), H).handle_request()
+PY
+  ssh_vm 'rm -f /tmp/heartbeat.json; setsid nohup timeout 1800 python3 /tmp/hb.py >/dev/null 2>&1 < /dev/null &
+    cd homelab && touch extras/backup/.env && source lib/common.sh && env_set extras/backup/.env BACKUP_HEARTBEAT_URL http://127.0.0.1:8098/'
   ssh_vm 'sudo systemctl start homelab-backup.service; systemctl show homelab-backup.service -p Result --value; sudo tail -n 8 /var/log/homelab-backup.log; sudo ls /srv/backup /srv/backup/db-dumps'
+  if ssh_vm 'grep -q "\"status\": \"ok\"" /tmp/heartbeat.json && cat /tmp/heartbeat.json'; then echo "  heartbeat: ok"
+  else echo "  heartbeat: FAIL"; fails=$((fails + 1)); fi
   ((fails == 0)) || { echo "$fails check(s) failed"; exit 1; }
   log "verify passed"
 }

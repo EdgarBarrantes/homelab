@@ -118,6 +118,7 @@ while IFS=$'\t' read -r kind p; do
     case "$kind" in root|host) ;; *) paths+=("$p") ;; esac
 done < "$META/info.txt"
 
+checked=no
 if [ "${#paths[@]}" -gt 0 ]; then
     if [ ! -f "$RESTIC_REPO/config" ]; then
         log "Initialising restic repository..."
@@ -142,6 +143,7 @@ if [ "${#paths[@]}" -gt 0 ]; then
     if [ "$(date +%u)" = 7 ]; then
         log "Sunday: verifying 5% of repository data..."
         retry restic -r "$RESTIC_REPO" check --read-data-subset=5%
+        checked=yes
     fi
 
     # Backrest only re-reads a repo after its own operations. Cosmetic.
@@ -155,3 +157,22 @@ if [ "${#paths[@]}" -gt 0 ]; then
 fi
 
 log "Backup complete."
+
+# Dead man's switch: tell BACKUP_HEARTBEAT_URL that this run succeeded, so a
+# monitor (Home Assistant, healthchecks.io, ...) alerts when heartbeats stop.
+# A stopped timer or a machine that's off never fails, so the failure alert
+# alone can't catch those.
+heartbeat_url="$(env_get "$ROOT/extras/backup/.env" BACKUP_HEARTBEAT_URL)"
+if [ -n "$heartbeat_url" ]; then
+    snapshot=""
+    if [ "${#paths[@]}" -gt 0 ]; then
+        snapshot="$(restic -r "$RESTIC_REPO" snapshots latest --json 2>/dev/null \
+            | python3 -c 'import json, sys; s = json.load(sys.stdin); print(s[0]["short_id"] if s else "")' \
+            2>/dev/null || true)"
+    fi
+    python3 -c 'import json, sys; print(json.dumps({"host": sys.argv[1], "status": "ok", "snapshot": sys.argv[2], "checked": sys.argv[3] == "yes"}))' \
+        "$HOMELAB_NAME" "$snapshot" "$checked" \
+        | curl -fsS -m 20 --retry 3 --retry-delay 10 --retry-all-errors -o /dev/null \
+            -X POST -H 'Content-Type: application/json' --data-binary @- "$heartbeat_url" \
+        && log "Heartbeat sent." || log "WARN: heartbeat to BACKUP_HEARTBEAT_URL failed"
+fi

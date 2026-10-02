@@ -10,6 +10,9 @@ A Paperless post-consume script that runs on every imported document:
   (its own yes/no, not Paperless's ML "Receipt" type, which is a guess) and
   if so sets `Amount`/`Expense` and creates a transaction in **Actual
   Budget**'s "Receipts" account, deduplicated on re-import.
+  `PAPERLESS_ACTUAL_POST=no` in homelab.env pauses the Actual part:
+  receipts still get `Amount` (but not `Expense`), so they can be found
+  and posted later.
 
 Plus Paperless's own AI suggestions (title, correspondent, tags, type) via
 the same local Ollama.
