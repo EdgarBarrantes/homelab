@@ -9,6 +9,9 @@ else:
 - `pause`: `lab pause` (stops containers labelled `lab.tier: heavy`)
 - `resume`: `lab resume` (starts everything enabled again)
 - `status`: prints `paused` when no heavy container runs, else `running`
+- `doctor`: `lab doctor` as one JSON line (`bad`, `warn`, `problems`,
+  `paused`), for a health sensor; while paused, the stopped heavy
+  containers don't count as problems
 
 Every pause and resume is logged in `~/.local/state/lab-remote.log`.
 
@@ -51,6 +54,20 @@ Every pause and resume is logged in `~/.local/state/lab-remote.log`.
          value_template: "{{ value == 'paused' }}"
          command_timeout: 300
          scan_interval: 300
+   ```
+
+   A health sensor from the same key (state = number of problems):
+
+   ```yaml
+   command_line:
+     - sensor:
+         name: Server doctor
+         command: >-
+           ssh -i /config/.ssh/lab_remote -o BatchMode=yes
+           -o UserKnownHostsFile=/config/.ssh/known_hosts_lab you@<server-lan-ip> doctor
+         value_template: "{{ value_json.bad }}"
+         json_attributes: [warn, problems, paused]
+         scan_interval: 900
    ```
 
    The switch is on while paused. `scan_interval` keeps the state check

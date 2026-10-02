@@ -6,6 +6,8 @@ name: glances
 # reach it at host.docker.internal instead. Read-only docker socket and host
 # PID namespace are Glances' documented requirements for container/process
 # stats; docker.sock read access does expose all container metadata.
+# Host networking also puts the API on every interface, so it needs a
+# password (GLANCES_PASSWORD, generated; start.sh hands it to Glances).
 services:
   glances:
     image: nicolargo/glances:ubuntu-4.5.7-full
@@ -13,13 +15,16 @@ services:
     restart: unless-stopped
     pid: host
     network_mode: host
+    command: ["/bin/sh", "/start.sh"]
     environment:
-      GLANCES_OPT: "-w"
+      GLANCES_OPT: "-w --password"
+      GLANCES_PASSWORD: ${GLANCES_PASSWORD}
       TZ: ${TZ}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./start.sh:/start.sh:ro
     healthcheck:
-      test: curl -f -s -o /dev/null http://localhost:61208/ || exit 1
+      test: curl -f -s -o /dev/null -u "glances:$$GLANCES_PASSWORD" http://localhost:61208/api/4/status || exit 1
       start_period: 20s
       interval: 30s
       timeout: 5s

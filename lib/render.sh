@@ -19,6 +19,13 @@ stack_env() {
     [[ -n "$(env_get "$env" "$k")" ]] || env_set "$env" "$k" "$(gen_secret)"
   done
   case "$s" in
+    homepage)
+      # The Glances widgets log in with Glances' generated password.
+      if is_enabled glances; then
+        stack_env glances
+        env_set "$env" HOMEPAGE_VAR_GLANCES_PASSWORD \
+          "$(env_get "$STACKS_DIR/glances/.env" GLANCES_PASSWORD)"
+      fi ;;
     immich)
       env_set "$env" UPLOAD_LOCATION "$PHOTOS_DIR"
       env_set "$env" TZ "$TZ" ;;

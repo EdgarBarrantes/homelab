@@ -4,18 +4,24 @@
       type: glances
       url: http://host.docker.internal:61208
       version: 4
+      username: glances
+      password: "{{HOMEPAGE_VAR_GLANCES_PASSWORD}}"
       metric: cpu
 - Memory Usage:
     widget:
       type: glances
       url: http://host.docker.internal:61208
       version: 4
+      username: glances
+      password: "{{HOMEPAGE_VAR_GLANCES_PASSWORD}}"
       metric: memory
 - Network Usage:
     widget:
       type: glances
       url: http://host.docker.internal:61208
       version: 4
+      username: glances
+      password: "{{HOMEPAGE_VAR_GLANCES_PASSWORD}}"
       metric: network:${NET_IFACE}
 - Glances:
     icon: glances.png
