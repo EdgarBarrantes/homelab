@@ -1,0 +1,5 @@
+- ntfy:
+    icon: ntfy.png
+    href: https://ntfy.${DOMAIN}
+    siteMonitor: https://ntfy.${DOMAIN}/v1/health
+    description: Phone notifications (and the Home Assistant watcher)

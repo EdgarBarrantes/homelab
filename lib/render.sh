@@ -19,6 +19,12 @@ stack_env() {
     [[ -n "$(env_get "$env" "$k")" ]] || env_set "$env" "$k" "$(gen_secret)"
   done
   case "$s" in
+    ntfy)
+      # ntfy's own formats: a tk_ token, and a password typed on a phone.
+      [[ -n "$(env_get "$env" NTFY_PUBLISH_TOKEN)" ]] || env_set "$env" NTFY_PUBLISH_TOKEN \
+        "tk_$(openssl rand -hex 15 | cut -c1-29)"
+      [[ -n "$(env_get "$env" NTFY_PHONE_PASSWORD)" ]] || env_set "$env" NTFY_PHONE_PASSWORD \
+        "$(openssl rand -hex 10)" ;;
     homepage)
       # The Glances widgets log in with Glances' generated password.
       if is_enabled glances; then

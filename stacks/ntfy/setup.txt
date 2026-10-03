@@ -1,0 +1,5 @@
+ntfy (https://ntfy.${DOMAIN}): install the ntfy app on your phone, add a subscription to
+  the topic "homelab-alerts" with "Use another server" = https://ntfy.${DOMAIN}, and log in
+  as "phone" with: ./lab secret ntfy NTFY_PHONE_PASSWORD
+  The phone reaches it like any private service (Tailscale). ntfy-watch alerts there when
+  Home Assistant (HA_URL) stops answering for 10 minutes.
