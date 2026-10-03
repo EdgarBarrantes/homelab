@@ -19,6 +19,13 @@ stack_env() {
     [[ -n "$(env_get "$env" "$k")" ]] || env_set "$env" "$k" "$(gen_secret)"
   done
   case "$s" in
+    caddy)
+      # Glances' route logs in for the browser (stacks/glances/caddy.conf).
+      if is_enabled glances; then
+        stack_env glances
+        env_set "$env" GLANCES_BASIC_AUTH \
+          "$(printf 'glances:%s' "$(env_get "$STACKS_DIR/glances/.env" GLANCES_PASSWORD)" | base64 -w0)"
+      fi ;;
     ntfy)
       # ntfy's own formats: a tk_ token, and a password typed on a phone.
       [[ -n "$(env_get "$env" NTFY_PUBLISH_TOKEN)" ]] || env_set "$env" NTFY_PUBLISH_TOKEN \

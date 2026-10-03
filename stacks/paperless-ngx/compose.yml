@@ -51,6 +51,8 @@ services:
       USERMAP_GID: ${PGID}
       PAPERLESS_REDIS: redis://paperless_redis:6379
       PAPERLESS_DBHOST: paperless_db
+      # Hourly by default; only in the cheap hours (CHEAP_HOURS in homelab.env).
+      PAPERLESS_TRAIN_TASK_CRON: "5 ${CHEAP_HOURS:-*} * * *"
       PAPERLESS_DBNAME: paperless
       PAPERLESS_DBUSER: paperless
       PAPERLESS_DBPASS: ${POSTGRES_PASSWORD}
