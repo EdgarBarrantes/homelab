@@ -1,0 +1,5 @@
+- TimeTagger:
+    icon: timetagger.png
+    href: https://time.${DOMAIN}/
+    siteMonitor: https://time.${DOMAIN}/timetagger/status
+    description: Time tracking by tag, with daily targets

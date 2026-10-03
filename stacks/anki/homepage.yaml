@@ -1,0 +1,5 @@
+- Anki:
+    icon: anki.png
+    href: https://anki.${DOMAIN}/
+    siteMonitor: https://anki.${DOMAIN}/health
+    description: Flashcard sync (set it as the sync server in Anki)

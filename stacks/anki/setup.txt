@@ -1,0 +1,4 @@
+Anki (https://anki.${DOMAIN}): in AnkiDroid, Settings > Sync > Custom sync server, and in
+  Anki desktop, Preferences > Syncing > Self-hosted sync server: https://anki.${DOMAIN}/
+  Then sync and log in as ANKI_USER (default "me") with: ./lab secret anki ANKI_PASSWORD
+  The first sync asks which side to keep: choose your device's collection (upload).

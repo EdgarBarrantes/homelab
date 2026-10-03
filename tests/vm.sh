@@ -155,7 +155,8 @@ PY
 down() { log "deleting $VM"; incus delete -f "$VM" 2>/dev/null || true; }
 
 full() {
-  up; install; verify; install; verify
+  # Fresh VM: a scoped run's leftover config would narrow the stacks.
+  down; up; install; verify; install; verify
   ssh_vm -t 'cd homelab && tests/restore-test.sh'
   ssh_vm -t 'bash homelab/tests/rebuild-test.sh'
 }

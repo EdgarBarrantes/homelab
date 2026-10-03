@@ -2,7 +2,7 @@
 # Sourced by lab and install.sh (after common.sh). Safe to run any time:
 # it never overwrites an existing secret or anything under data/.
 
-HOMEPAGE_GROUPS=(Infrastructure Photos Documents AI Files Backups Home Finance)
+HOMEPAGE_GROUPS=(Infrastructure Photos Documents AI Files Productivity Backups Home Finance)
 
 gen_secret() { openssl rand -hex 24; }
 
@@ -32,6 +32,10 @@ stack_env() {
         "tk_$(openssl rand -hex 15 | cut -c1-29)"
       [[ -n "$(env_get "$env" NTFY_PHONE_PASSWORD)" ]] || env_set "$env" NTFY_PHONE_PASSWORD \
         "$(openssl rand -hex 10)" ;;
+    timetagger|anki)
+      # A password typed on a phone, like ntfy's.
+      k="${s^^}_PASSWORD"
+      [[ -n "$(env_get "$env" "$k")" ]] || env_set "$env" "$k" "$(openssl rand -hex 10)" ;;
     homepage)
       # The Glances widgets log in with Glances' generated password.
       if is_enabled glances; then

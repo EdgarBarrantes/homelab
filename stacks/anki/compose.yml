@@ -1,0 +1,32 @@
+name: anki
+
+# Anki sync server: Anki desktop and AnkiDroid sync here instead of
+# AnkiWeb. One account: ANKI_USER (default "me"), password:
+# ./lab secret anki ANKI_PASSWORD. Collections and media in ./data.
+services:
+  anki:
+    build: .
+    image: local/anki-sync:26.9.3
+    container_name: anki
+    restart: unless-stopped
+    user: "${PUID}:${PGID}"
+    networks: [proxy]
+    environment:
+      TZ: ${TZ}
+      SYNC_BASE: /data
+      SYNC_HOST: 0.0.0.0
+      SYNC_PORT: "8080"
+      SYNC_USER1: ${ANKI_USER:-me}:${ANKI_PASSWORD}
+      MAX_SYNC_PAYLOAD_MEGS: "500"
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      start_period: 15s
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  proxy:
+    external: true
