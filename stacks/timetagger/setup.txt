@@ -1,4 +1,0 @@
-TimeTagger (https://time.${DOMAIN}): log in as TIMETAGGER_USER (default "me")
-  with: ./lab secret timetagger TIMETAGGER_PASSWORD
-  On a phone, open it in the browser and "Add to home screen". For Home Assistant or
-  scripts: the API token is on the Account page (header "authtoken").

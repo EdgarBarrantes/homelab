@@ -29,7 +29,6 @@ itself.
 | `actual-budget` | Envelope budgeting, plus an HTTP API wrapper | `budget.` | standard |
 | `gokapi` | Expiring file shares | `files.` (public: `send.`) | standard |
 | `calibre-web` | Ebook library in the browser, with an import folder ([Calibre-Web Automated](https://github.com/crocodilestick/calibre-web-automated)) | `books.` | standard |
-| `timetagger` | Time tracking by #tag, with daily targets | `time.` | standard |
 | `anki` | Anki sync server, so flashcards sync without AnkiWeb | `anki.` | standard |
 | `backrest` | Browse and restore the nightly backups | `backrest.` | standard |
 | `ollama` | Local LLMs with the Open WebUI chat | `ai.` | full |

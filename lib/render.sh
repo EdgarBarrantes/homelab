@@ -32,7 +32,7 @@ stack_env() {
         "tk_$(openssl rand -hex 15 | cut -c1-29)"
       [[ -n "$(env_get "$env" NTFY_PHONE_PASSWORD)" ]] || env_set "$env" NTFY_PHONE_PASSWORD \
         "$(openssl rand -hex 10)" ;;
-    timetagger|anki)
+    anki)
       # A password typed on a phone, like ntfy's.
       k="${s^^}_PASSWORD"
       [[ -n "$(env_get "$env" "$k")" ]] || env_set "$env" "$k" "$(openssl rand -hex 10)" ;;
