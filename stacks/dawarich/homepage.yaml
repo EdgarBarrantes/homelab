@@ -1,0 +1,5 @@
+- Dawarich:
+    icon: dawarich.png
+    href: https://timeline.${DOMAIN}
+    siteMonitor: https://timeline.${DOMAIN}
+    description: Location history and walks

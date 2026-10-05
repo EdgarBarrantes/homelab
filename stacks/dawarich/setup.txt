@@ -1,0 +1,8 @@
+Dawarich (https://timeline.${DOMAIN}): log in as admin@${DOMAIN}, password:
+  lab secret dawarich DAWARICH_ADMIN_PASSWORD
+  (change the email and password under Account if you like).
+Phone: install the Dawarich app (or OwnTracks / GPSLogger), server
+  https://timeline.${DOMAIN}, API key from Account. The phone needs to reach
+  the server (VPN) to upload; the apps queue points while it can't.
+Google Timeline: export it (Takeout, or the phone's Timeline export) and
+  upload it under Imports, or copy it into stacks/dawarich/data/watched.

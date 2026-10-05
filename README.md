@@ -30,6 +30,7 @@ itself.
 | `gokapi` | Expiring file shares | `files.` (public: `send.`) | standard |
 | `calibre-web` | Ebook library in the browser, with an import folder ([Calibre-Web Automated](https://github.com/crocodilestick/calibre-web-automated)) | `books.` | standard |
 | `anki` | Anki sync server, so flashcards sync without AnkiWeb | `anki.` | standard |
+| `dawarich` | Location history and walk maps (a Google Timeline replacement) | `timeline.` | full |
 | `backrest` | Browse and restore the nightly backups | `backrest.` | standard |
 | `ollama` | Local LLMs with the Open WebUI chat | `ai.` | full |
 | `speech` | Speech to text and text to speech (OpenAI API, Home Assistant) | `speech.` | full |

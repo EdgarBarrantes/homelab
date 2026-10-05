@@ -36,6 +36,9 @@ stack_env() {
       # A password typed on a phone, like ntfy's.
       k="${s^^}_PASSWORD"
       [[ -n "$(env_get "$env" "$k")" ]] || env_set "$env" "$k" "$(openssl rand -hex 10)" ;;
+    dawarich)
+      # Rails wants a long secret_key_base.
+      [[ -n "$(env_get "$env" SECRET_KEY_BASE)" ]] || env_set "$env" SECRET_KEY_BASE "$(openssl rand -hex 64)" ;;
     homepage)
       # The Glances widgets log in with Glances' generated password.
       if is_enabled glances; then

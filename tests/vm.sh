@@ -3,7 +3,7 @@
 # Nothing touches the host except the VM itself. No Cloudflare, no
 # Tailscale: TLS_MODE=internal (Caddy's own CA), config in tests/vm.env.
 #
-#   tests/vm.sh up        create the VM (4 CPU, 8 GiB, 40 GiB disk)
+#   tests/vm.sh up        create the VM (4 CPU, 10 GiB, 40 GiB disk)
 #   tests/vm.sh install   ./install.sh --host ubuntu@<vm> --config tests/vm.env --yes
 #   tests/vm.sh verify    lab doctor + HTTPS from the host + a backup run
 #   tests/vm.sh rerun     install again (must be idempotent)
@@ -50,7 +50,7 @@ up() {
   if incus info "$VM" >/dev/null 2>&1; then log "$VM already exists"; else
     log "creating $VM"
     incus launch images:ubuntu/24.04/cloud "$VM" --vm \
-      -c limits.cpu=4 -c limits.memory=8GiB -d root,size=40GiB \
+      -c limits.cpu=4 -c limits.memory=10GiB -d root,size=40GiB \
       -c cloud-init.user-data="#cloud-config
 users:
   - name: ubuntu
