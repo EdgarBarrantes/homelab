@@ -13,6 +13,12 @@ services:
     environment:
       IMMICH_URL: http://immich_server:2283
       PUBLIC_BASE_URL: https://share.${PUBLIC_DOMAIN}
+    # What a public page shows: downloads follow each Immich link's own
+    # "Allow download" (allowDownload 1), metadata its "Show metadata".
+    # Options: the project's README. Recreate the container after editing
+    # (single-file mount): docker compose up -d --force-recreate
+    volumes:
+      - ./config.json:/app/config.json:ro
     ports:
       - "127.0.0.1:3000:3000"
     networks: [proxy]

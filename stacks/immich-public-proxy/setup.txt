@@ -1,2 +1,5 @@
 Immich public links: in Immich, Administration > Settings > Server >
   External domain = https://share.${PUBLIC_DOMAIN}, so shared links use it.
+What the public pages show is in stacks/immich-public-proxy/config.json:
+  downloads and metadata follow each link's own settings in Immich;
+  location, file names and camera details beyond make/model stay hidden.
