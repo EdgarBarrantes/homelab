@@ -49,9 +49,13 @@ up() {
   [[ -f "$KEY" ]] || ssh-keygen -q -t ed25519 -N '' -C homelab-vm-test -f "$KEY"
   if incus info "$VM" >/dev/null 2>&1; then log "$VM already exists"; else
     log "creating $VM"
-    incus launch images:ubuntu/24.04/cloud "$VM" --vm \
-      -c limits.cpu=4 -c limits.memory=10GiB -d root,size=40GiB \
-      -c cloud-init.user-data="#cloud-config
+    local try
+    # The client sometimes hangs talking to the image server (the daemon
+    # never sees an operation): give up after 5 minutes and try once more.
+    for try in 1 2; do
+      timeout 300 incus launch images:ubuntu/24.04/cloud "$VM" --vm \
+        -c limits.cpu=4 -c limits.memory=10GiB -d root,size=40GiB \
+        -c cloud-init.user-data="#cloud-config
 users:
   - name: ubuntu
     shell: /bin/bash
@@ -59,7 +63,11 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys: [\"$(cat "$KEY.pub")\"]
 packages: [openssh-server]
-"
+" && break
+      ((try == 1)) || { echo "incus launch failed twice"; exit 1; }
+      log "incus launch stuck or failed; retrying"
+      incus delete -f "$VM" >/dev/null 2>&1 || true
+    done
   fi
   log "waiting for SSH"
   for _ in $(seq 1 90); do
@@ -98,6 +106,14 @@ verify() {
   ssh_vm 'cat homelab/rendered/caddy-local-ca.crt' > "$STATE/ca.crt"
   # Hostnames of the installed stacks, plus the map and the overlay's route.
   local stacks s h code fails=0 hosts="map hello"
+  # lab keys: every key documented, and no value ever printed.
+  if ssh_vm 'cd homelab && out="$(./lab keys)" && ! grep -q undocumented <<<"$out" || exit 1
+      for f in stacks/*/.env extras/backup/.env; do [[ -f "$f" ]] || continue
+        while IFS== read -r k v; do v="${v#[\"'\'']}"; v="${v%[\"'\'']}"
+          ((${#v} < 8)) || ! grep -qF -- "$v" <<<"$out" || { echo "value of $k printed"; exit 1; }
+        done < <(grep "^[A-Za-z_]" "$f")
+      done'; then echo "  lab keys (all documented, no values): ok"
+  else echo "  lab keys: FAIL"; fails=$((fails + 1)); fi
   stacks="$(ssh_vm 'source <(grep "^STACKS=" homelab/homelab.env); echo $STACKS')"
   for s in $stacks; do
     h="$(sed -n 's/^HOST=//p' "$ROOT/stacks/$s/stack.conf" | tr -d '"')" # none for caddy

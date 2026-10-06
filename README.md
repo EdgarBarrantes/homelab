@@ -150,6 +150,7 @@ lab enable | disable <stack>
 lab doctor                  containers healthy? routes answering? GPU? backups?
 lab config <stack> <KEY>    set a value in a stack's .env (hidden input)
 lab secret <stack> <KEY>    print one (e.g. a generated admin password)
+lab keys [--long] [stack]   which keys each .env has, set or empty, what they're for
 lab backup now | status | log
 lab restore [--dry-run]     bring data back from the backups
 lab compose <stack> ...     any docker compose command with lab's files
@@ -163,7 +164,10 @@ lab compose <stack> ...     any docker compose command with lab's files
   backups...). Written by the wizard; documented line by line in
   [homelab.env.example](homelab.env.example). After editing: `lab up`.
 - **`stacks/<name>/.env`**: that stack's secrets, generated on first render
-  and never overwritten. Change one with `lab config`.
+  and never overwritten. Change one with `lab config`. Every key is
+  documented in `stacks/<name>/.env.example` (the comment above it starts
+  with `Generated.` when lab makes the value, `Managed:` when `lab render`
+  rewrites it); `lab keys` lists them without showing values.
 - **`stacks/<name>/`**: `compose.yml` (all machine-specific values are
   `${VARIABLES}` from `homelab.env`), `stack.conf` (description, hostname,
   needs, secrets, backup paths), `caddy.conf` (its route), `homepage.yaml`

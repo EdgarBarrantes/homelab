@@ -103,6 +103,7 @@ enabled_stacks() {
   for s in $(all_stacks); do
     [[ " ${STACKS:-} " == *" $s "* ]] && echo "$s"
   done
+  return 0  # not the last test's status: callers may run under set -e
 }
 
 is_enabled() { [[ " ${STACKS:-} " == *" $1 "* ]]; }

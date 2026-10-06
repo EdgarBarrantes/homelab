@@ -20,6 +20,7 @@
 #   lab doctor                 check that everything is healthy
 #   lab config <stack> <KEY>   set a value in a stack's .env (asks, hidden)
 #   lab secret <stack> <KEY>   print a value from a stack's .env
+#   lab keys [stack...|backup] the keys in each .env, documented (never values)
 #   lab backup [now|status|log] run or inspect the nightly backup
 #   lab restore [--dry-run]    bring data back from the backups (see --help)
 set -euo pipefail
@@ -83,6 +84,54 @@ caddy_reload() {
 set_stacks() {
   STACKS="$(printf '%s\n' $1 | awk 'NF && !seen[$0]++' | tr '\n' ' ' | sed 's/ $//')"
   env_set "$HOMELAB_ENV" STACKS "$STACKS"
+}
+
+# keys <name> <.env> <.env.example> <generated keys>: every key the stack's
+# .env.example documents or its .env holds, never a value. Origin from the
+# comment above the key: "Generated." (lab makes it), "Managed:" (lab render
+# rewrites it), else yours to set. Full comments with --long. Keys a private
+# overlay adds are documented in LOCAL_DIR/stacks/<stack>/.env.example.
+keys() {
+  local name="$1" env="$2" ex="$3" gen=" $4 " long="${KEYS_LONG:-}" line k f block="" desc origin state w=0 room
+  local -a order=(); local -A doc=()
+  # The stack's own example, then the private overlay's (keys it adds).
+  for f in "$ex" "${LOCAL_DIR:-/nonexistent}/stacks/$name/.env.example"; do
+    [[ -f "$f" ]] || continue
+    block=""
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^#\ ?(.*)$ ]]; then block+="${BASH_REMATCH[1]} "
+      elif [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then
+        k="${BASH_REMATCH[1]}"; [[ -v "doc[$k]" ]] || order+=("$k"); doc[$k]="${block% }"; block=""
+      else block=""; fi
+    done < "$f"
+  done
+  if [[ -f "$env" ]]; then
+    while IFS= read -r k; do
+      [[ -v "doc[$k]" ]] || { doc[$k]=""; order+=("$k"); }
+    done < <(sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$env" | awk '!seen[$0]++')
+  fi
+  ((${#order[@]})) || return 0
+  for k in "${order[@]}"; do ((${#k} > w)) && w=${#k}; done
+  printf '%s%s%s %s%s%s\n' "$C_B" "$name" "$C_0" "$C_DIM" "${env#"$ROOT"/}" "$C_0"
+  for k in "${order[@]}"; do
+    desc="${doc[$k]}"
+    if [[ "$gen" == *" $k "* || "$desc" == Generated* ]]; then origin=generated
+    elif [[ "$desc" == Managed* ]]; then origin=managed
+    elif [[ -n "$desc" ]]; then origin=yours
+    else origin=undocumented; fi
+    desc="${desc#Generated. }"; desc="${desc#Managed: }"
+    if [[ -n "$(env_get "$env" "$k")" ]]; then state="${C_GRN}set  ${C_0}"; else state="${C_YLW}empty${C_0}"; fi
+    if [[ -n "$long" ]]; then
+      printf '  %-*s  %s  %-12s\n' "$w" "$k" "$state" "$origin"
+      [[ -n "$desc" ]] && fold -s -w 72 <<<"$desc" | sed "s/^/      $C_DIM/; s/\$/$C_0/"
+    else
+      # First sentence, cut at a word to fit the terminal.
+      desc="${desc%%. *}"; room=$(( ${COLUMNS:-$(tput cols 2>/dev/null || echo 100)} - w - 25 ))
+      if ((room < 20)); then desc=""
+      elif ((${#desc} > room)); then desc="${desc:0:room-3}"; desc="${desc% *}..."; fi
+      printf '  %-*s  %s  %-12s %s%s%s\n' "$w" "$k" "$state" "$origin" "$C_DIM" "$desc" "$C_0"
+    fi
+  done
 }
 
 cmd="${1:-status}"; shift || true
@@ -152,6 +201,17 @@ case "$cmd" in
     f="$STACKS_DIR/$1/.env"; [[ -f "$f" ]] || die "no $f (enable the stack and run lab render)"
     read -r -s -p "$2 for $1 (input hidden): " val </dev/tty; echo
     env_set "$f" "$2" "$val"; echo "saved; apply with: ./lab up $1" ;;
+  keys)
+    [[ "${1:-}" == --long ]] && { KEYS_LONG=1; shift; }
+    want="$(pick "$@")"; (($#)) || want+=$'\nbackup'
+    for s in $want; do
+      if [[ "$s" == backup ]]; then
+        keys backup "$ROOT/extras/backup/.env" "$ROOT/extras/backup/.env.example" ""
+      else
+        [[ -f "$STACKS_DIR/$s/stack.conf" ]] || die "no such stack: $s"
+        keys "$s" "$STACKS_DIR/$s/.env" "$STACKS_DIR/$s/.env.example" "$(stack_meta "$s" SECRETS)"
+      fi
+    done ;;
   secret)
     [[ $# -eq 2 ]] || die "usage: lab secret <stack> <KEY>"
     env_get "$STACKS_DIR/$1/.env" "$2"; echo ;;

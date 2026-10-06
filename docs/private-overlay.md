@@ -16,6 +16,8 @@ $LOCAL_DIR/
   caddy/sites/*.conf        extra routes inside the *.$DOMAIN site
   caddy/*.caddy             extra top-level Caddy sites
   stacks/<stack>/*.yml      extra compose files for that stack
+  stacks/<stack>/.env.example  keys those files add to the stack's .env
+                            (documented for `lab keys`, same format)
   cloudflared.yml           extra tunnel ingress entries
 ```
 
