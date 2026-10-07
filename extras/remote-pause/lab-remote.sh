@@ -6,8 +6,9 @@
 #   resume  lab resume (starts everything enabled again)
 #   status  "paused" when no heavy container runs, else "running"
 #   doctor  lab doctor as one JSON line: {"bad", "warn", "problems",
-#           "paused"}; while paused, the stopped heavy containers aren't
-#           counted as problems
+#           "paused", "reboot", "reboot_since", "reboot_pkgs"}; while
+#           paused, the stopped heavy containers aren't counted as problems;
+#           "reboot" is the OS's "reboot required" flag (set by updates)
 #   screen  {"brightness": 0-100, "volume": 0-100, "muted": bool} of the
 #           desktop session (null when nobody is logged in)
 #   brightness <0-100>  screen brightness; 0 is the dimmest, never off
@@ -51,7 +52,15 @@ for line in lines:
     if t[:1] not in ("\u2718", "!") or any(n in t for n in skip):
         continue
     (bad if t[0] == "\u2718" else warn).append(t[1:].strip())
-print(json.dumps({"bad": len(bad), "warn": len(warn), "problems": (bad + warn)[:10], "paused": bool(skip)}))'
+flag = "/var/run/reboot-required"
+reboot = os.path.exists(flag)
+since = __import__("datetime").datetime.fromtimestamp(os.path.getmtime(flag)).astimezone().isoformat(timespec="minutes") if reboot else None
+try:
+    pkgs = open(flag + ".pkgs").read().split() if reboot else []
+except OSError:
+    pkgs = []
+print(json.dumps({"bad": len(bad), "warn": len(warn), "problems": (bad + warn)[:10], "paused": bool(skip),
+                  "reboot": reboot, "reboot_since": since, "reboot_pkgs": sorted(set(pkgs))[:10]}))'
     exit 0 ;;
   screen)
     b="$(bright_get DisplayBrightness)"; m="$(bright_get MaxDisplayBrightness)"

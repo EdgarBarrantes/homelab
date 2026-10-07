@@ -11,7 +11,8 @@ else:
 - `status`: prints `paused` when no heavy container runs, else `running`
 - `doctor`: `lab doctor` as one JSON line (`bad`, `warn`, `problems`,
   `paused`), for a health sensor; while paused, the stopped heavy
-  containers don't count as problems
+  containers don't count as problems. Also `reboot` (the OS's "reboot
+  required" flag after updates), `reboot_since` and `reboot_pkgs`
 
 - `screen`: brightness and volume of the desktop session as one JSON
   line (`{"brightness": 38, "volume": 60, "muted": false}`)
@@ -72,7 +73,7 @@ Every pause and resume is logged in `~/.local/state/lab-remote.log`.
            ssh -i /config/.ssh/lab_remote -o BatchMode=yes
            -o UserKnownHostsFile=/config/.ssh/known_hosts_lab you@<server-lan-ip> doctor
          value_template: "{{ value_json.bad }}"
-         json_attributes: [warn, problems, paused]
+         json_attributes: [warn, problems, paused, reboot, reboot_since, reboot_pkgs]
          scan_interval: 900
    ```
 
