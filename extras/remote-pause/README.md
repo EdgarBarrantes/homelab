@@ -13,6 +13,12 @@ else:
   `paused`), for a health sensor; while paused, the stopped heavy
   containers don't count as problems
 
+- `screen`: brightness and volume of the desktop session as one JSON
+  line (`{"brightness": 38, "volume": 60, "muted": false}`)
+- `brightness <0-100>`: screen brightness (0 is the dimmest, never off);
+  through COSMIC's settings daemon, so its own slider follows
+- `volume <0-100>`: output volume of the default sink (PipeWire)
+
 Every pause and resume is logged in `~/.local/state/lab-remote.log`.
 
 ## Setup
@@ -72,6 +78,26 @@ Every pause and resume is logged in `~/.local/state/lab-remote.log`.
 
    The switch is on while paused. `scan_interval` keeps the state check
    to one SSH login every 5 minutes.
+
+   Brightness and volume as dropdowns (a sensor for the current values,
+   a shell command to set them, and two template selects):
+
+   ```yaml
+   command_line:
+     - sensor:
+         name: Server screen
+         command: >-
+           ssh -i /config/.ssh/lab_remote -o BatchMode=yes
+           -o UserKnownHostsFile=/config/.ssh/known_hosts_lab you@<server-lan-ip> screen
+         value_template: "{{ value_json.brightness }}"
+         unit_of_measurement: "%"
+         json_attributes: [volume, muted]
+         scan_interval: 300
+   shell_command:
+     server_screen: >-
+       ssh -i /config/.ssh/lab_remote -o BatchMode=yes
+       -o UserKnownHostsFile=/config/.ssh/known_hosts_lab you@<server-lan-ip> {{ what }} {{ level }}
+   ```
 
 Note: with the speech stack paused, HA's voice pipeline can't transcribe,
 so "turn off desktop mode" by voice won't work while it's on; use the
