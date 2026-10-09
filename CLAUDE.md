@@ -33,7 +33,14 @@ public: never commit real domains, IPs, names, paths or secrets.
 
 ## Testing
 
-Only in a VM: `tests/vm.sh all` (Incus, Ubuntu 24.04, internal TLS, no
-Cloudflare): install over `--host`, verify from outside, idempotent rerun,
-and a backup -> "new machine" -> `lab restore` round trip. Never run the
-installer on a real server to test it.
+Only in a VM (Incus, Ubuntu 24.04, internal TLS, no Cloudflare); never run
+the installer on a real server to test it. Test in proportion:
+`tests/vm.sh changed` classifies the diff (rules in `tests/scope.sh`,
+table in tests/README.md) and runs what it needs: nothing for docs,
+`tests/check.sh` (host, seconds) for tiles, env docs and same-major image
+bumps, a scoped VM run for a stack's runtime, `suite` (no drills) for
+shared code, `all` (with the restore and rebuild drills) for backup and
+restore code. When adding a kind of file or a rule, add a case to the
+self-test in `tests/check.sh`. Images and builds are cached between runs
+(`tests/vm.sh cache`, `HOMELAB_TEST_CACHE=off` for a run as on a new
+machine).

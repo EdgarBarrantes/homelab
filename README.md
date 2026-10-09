@@ -158,6 +158,13 @@ lab restore [--dry-run]     bring data back from the backups
 lab compose <stack> ...     any docker compose command with lab's files
 ```
 
+`lab up` and `lab resume` start several stacks **in parallel** (Caddy
+first, then the rest side by side: one line per stack with its time, logs
+in `rendered/up-logs/`) or **serially** (one after another, live output).
+`LAB_UP_MODE=auto` in homelab.env picks parallel when more than two stacks
+start on 4+ CPUs and 8+ GB RAM; `--serial` once is the way to watch a
+stack that won't start, `--parallel` forces the fast way.
+
 `./install.sh` offers to link `lab` into `~/.local/bin`.
 
 ## Configuration

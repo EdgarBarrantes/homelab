@@ -12,6 +12,18 @@
 #   tests/vm.sh ssh       shell in the VM
 #   tests/vm.sh down      delete the VM
 #   tests/vm.sh all       up, install, verify, rerun, verify, restore, rebuild
+#   tests/vm.sh suite     the same without the restore and rebuild drills
+#   tests/vm.sh check     host-only checks (tests/check.sh), seconds, no VM
+#
+# Which one a change needs: `tests/vm.sh changed` (rules in tests/scope.sh):
+#   none     docs, setup texts, the map
+#   check    a tile, a description, env docs, an image bump in the same
+#            major version, the HA/remote-pause extras
+#   stacks   a stack's runtime (compose services, Dockerfile, scripts,
+#            route), a major image bump, a new stack: scoped VM run
+#   install  shared code (lab, lib/, install.sh, Caddy, the harness):
+#            `suite`
+#   full     backup/restore code, the drills, PG_*/BACKUP_PATHS: `all`
 #
 # Scoped runs, for a change to one or a few stacks (fresh VM, install,
 # verify; the rerun, restore and rebuild drills belong to the full suite):
@@ -20,6 +32,30 @@
 #   tests/vm.sh stacks "a b"     only these stacks (plus what they need)
 #   tests/vm.sh scope [base]     just print what `changed` would test
 # Scope rules are in tests/scope.sh; per-stack checks in tests/stacks/<s>.sh.
+#
+# Speed: images from earlier runs are kept in an image cache on the host
+# ($HOMELAB_TEST_CACHE, default ~/.cache/homelab-test/images) and loaded into
+# the fresh VM before the install, so nothing is pulled twice. That means
+# Docker is installed before install.sh runs (with install.sh's own
+# fix_docker); HOMELAB_TEST_CACHE=off tests the installer's Docker step and
+# real pulls (digest-pinned images, e.g. image:tag@sha256:..., are loaded
+# but compose still fetches them: two small ones today). Locally built
+# images (stacks with a Dockerfile) keep their
+# BuildKit cache next to it (.../build/<stack>), imported before the
+# install so `lab up --build` finds every step done; a changed Dockerfile
+# only misses the steps it changed, and a cache older than 7 days is
+# dropped so unpinned builds (Caddy's plugins) are redone weekly. A passed
+# run deletes the VM (KEEP_VM=1 keeps it); a failed one leaves it for
+# `tests/vm.sh ssh`. Every run ends with the time each phase took.
+#
+# Cache invalidation: an image saved under an exact version (x.y.z or a
+# digest) is dropped 60 days after it was saved, any other tag (v3, 2,
+# 17-alpine, latest: tags that move) after 7 days, so new upstream builds
+# come in weekly; build caches also after 7 days. By hand:
+#   tests/vm.sh cache                     list entries, age and size
+#   tests/vm.sh cache clear [what]        delete: all (default), images,
+#                                         build, or names matching <what>
+#   HOMELAB_TEST_CACHE=off tests/vm.sh …  one run without the cache
 #
 # Needs: incus (user in incus-admin), KVM. VM name: $VM (default homelab-test).
 set -euo pipefail
@@ -31,7 +67,42 @@ STATE="$HERE/.vm"
 KEY="$STATE/id_ed25519"
 export HOMELAB_SSH_OPTS="-i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=10"
 
-log() { printf '\n\e[1;34m[vm]\e[0m %s\n' "$*"; }
+CACHE="${HOMELAB_TEST_CACHE:-$HOME/.cache/homelab-test/images}"
+BCACHE="$(dirname "$CACHE")/build"
+# The image names in the compose files of the stacks under test (all of
+# tests/vm.env, or TEST_STACKS), with ${VAR:-default} reduced to the default.
+stacks_images() {
+  local st="${TEST_STACKS:-$(sed -n 's/^STACKS="\(.*\)"/\1/p' "$HERE/vm.env")}" s
+  for s in $st; do cat "$ROOT/stacks/$s"/*.yml 2>/dev/null; done \
+    | sed -n -E 's/^ *image: *"?([^" ]+)"?.*/\1/p' | sed -E 's/\$\{[A-Z_]+:-([^}]*)\}/\1/g'
+}
+
+# context_sum <stack>: a checksum of the stack's build files (as sent to the
+# build: everything but data/ and .env).
+context_sum() {
+  (cd "$ROOT/stacks/$1" && find . -type f ! -path './data/*' ! -name .env -print0 | sort -z \
+    | xargs -0 sha256sum | sha256sum | cut -c1-16)
+}
+
+# Stacks that build their own image.
+build_stacks() { local d; for d in "$ROOT"/stacks/*/Dockerfile; do basename "$(dirname "$d")"; done; }
+
+T0=$SECONDS
+PHASES=()
+dur() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }
+log() { printf '\n\e[1;34m[vm %s +%s]\e[0m %s\n' "$(date +%T)" "$(dur $((SECONDS - T0)))" "$*"; }
+# timed <name> <command...>: run it and remember how long it took.
+timed() {
+  local name="$1" t=$SECONDS; shift
+  "$@"
+  PHASES+=("$(printf '%-9s %s' "$name" "$(dur $((SECONDS - t)))")")
+}
+summary() {
+  ((${#PHASES[@]})) || return 0
+  printf '\n\e[1;34m[vm]\e[0m time per phase (total %s):\n' "$(dur $((SECONDS - T0)))"
+  printf '  %s\n' "${PHASES[@]}"
+}
+trap summary EXIT
 
 # The VM's own address: once Docker runs inside, incus also lists docker0
 # and br-* bridge addresses, so skip those.
@@ -97,6 +168,123 @@ install() {
   ssh_vm 'test -f homelab/homelab.env' && cfg=()
   timeout --foreground 45m "$ROOT/install.sh" --host "ubuntu@$ip" "${cfg[@]}" --yes
 }
+
+# preload: Docker (install.sh's own fix_docker) and the cached images into
+# the VM, so `lab up` finds them instead of pulling.
+preload() {
+  [[ "$CACHE" != off ]] || { log "image cache off: install.sh installs Docker and pulls"; return 0; }
+  expire_cache
+  local files=("$CACHE"/*.tar) f n=0
+  [[ -e "${files[0]}" ]] || { log "image cache empty: this run pulls, then fills it"; return 0; }
+  log "Docker and ${#files[@]} cached image(s) into the VM"
+  { cat "$ROOT/lib/common.sh" "$ROOT/lib/checks.sh"; echo 'APT_LOG=/tmp/apt.log; fix_docker'; } \
+    | ssh_vm 'ROOT=/tmp bash -s' >/dev/null
+  # Only the images the tested stacks name (by repository, any tag), four
+  # loads at a time.
+  local want=() repos r
+  repos="$(stacks_images | sed -E 's/[:@].*//; s|^docker\.io/||; s|^library/||' | sort -u)"
+  for f in "${files[@]}"; do
+    for r in $repos; do
+      [[ "$(basename "$f")" == "$(tr '/:@' '___' <<<"$r")_"* ]] && { want+=("$f"); break; }
+    done
+  done
+  export -f ssh_vm vm_ip; export VM HOMELAB_SSH_OPTS
+  printf '%s\0' "${want[@]}" | xargs -0 -r -P4 -I{} bash -c 'ssh_vm "sudo docker load -q >/dev/null" < "$1"' _ {}
+  n=${#want[@]}
+  echo "  loaded $n of ${#files[@]} cached image(s)"
+  # Warm BuildKit with each local build's saved cache (a cache-only build of
+  # the same context), so lab's own build later is all cache hits.
+  local s
+  for s in $(build_stacks); do
+    [[ -d "$BCACHE/$s" ]] || continue
+    tar -C "$ROOT/stacks/$s" --exclude=./data --exclude=./.env -cf - . \
+      | ssh_vm "rm -rf /tmp/build/$s && mkdir -p /tmp/build/$s/ctx /tmp/build/$s/cache && tar -xf - -C /tmp/build/$s/ctx"
+    tar -C "$BCACHE/$s" -cf - . | ssh_vm "tar -xf - -C /tmp/build/$s/cache"
+    ssh_vm "sudo docker buildx build -q --cache-from type=local,src=/tmp/build/$s/cache --output type=cacheonly /tmp/build/$s/ctx" \
+      >/dev/null 2>&1 && echo "  build cache: $s" || echo "  build cache: $s not usable, it will be rebuilt"
+  done
+}
+
+# save_cache: every pulled image of a passed install into the cache (once
+# per image; tag, or digest for digest-pinned ones). Entries unused for 30
+# days are dropped.
+save_cache() {
+  [[ "$CACHE" != off ]] || return 0
+  mkdir -p "$CACHE"
+  local ref f n=0
+  # RepoTags, not `image ls`: with the containerd image store, ls leaves the
+  # digest empty for digest-pinned images, while RepoTags has repo@sha256:...
+  while read -r ref; do
+    [[ -z "$ref" || "$ref" == local/* ]] && continue
+    f="$CACHE/$(tr '/:@' '___' <<<"$ref").tar"
+    [[ -f "$f" ]] && continue
+    # </dev/null: ssh would otherwise eat the rest of the image list.
+    ssh_vm "sudo docker save '$ref'" < /dev/null > "$f.part" && mv "$f.part" "$f" && n=$((n + 1))
+  done < <(ssh_vm 'sudo docker image inspect -f "{{range .RepoTags}}{{println .}}{{end}}" $(sudo docker image ls -q)' | sort -u)
+  rm -f "$CACHE"/*.part
+  # BuildKit cache of each local build this install did (a cache-only
+  # rebuild in the warm VM, exported), replacing the previous one. Kept
+  # dates: a cache only gets a new mtime when it is rebuilt from scratch.
+  local s t img sum
+  for s in $(build_stacks); do
+    # Only builds this install did: their image exists in the VM.
+    img="$(sed -n 's/^ *image: *\(local\/[^ ]*\).*/\1/p' "$ROOT/stacks/$s/compose.yml" | head -n1)"
+    [[ -n "$img" ]] && ssh_vm "sudo docker image inspect '$img' >/dev/null 2>&1" < /dev/null || continue
+    # Export only when there is no cache yet or the build files changed:
+    # re-exporting a build that was all cache hits loses the earlier
+    # stages' layers (the next run would compile Caddy again).
+    sum="$(context_sum "$s")"
+    [[ -f "$BCACHE/$s/.context-sum" && "$(cat "$BCACHE/$s/.context-sum")" == "$sum" ]] && continue
+    ssh_vm "cd homelab/stacks/$s && sudo rm -rf /tmp/bcx/$s && sudo docker buildx build -q --cache-to type=local,dest=/tmp/bcx/$s,mode=max --output type=cacheonly ." \
+      < /dev/null >/dev/null 2>&1 || { echo "  build cache: $s not exported"; continue; }
+    t="$(stat -c %y "$BCACHE/$s" 2>/dev/null || true)"
+    mkdir -p "$BCACHE/$s.part"
+    ssh_vm "sudo tar -C /tmp/bcx/$s -cf - ." < /dev/null | tar -xf - -C "$BCACHE/$s.part" \
+      && echo "$sum" > "$BCACHE/$s.part/.context-sum" \
+      && rm -rf "$BCACHE/$s" && mv "$BCACHE/$s.part" "$BCACHE/$s" \
+      && { [[ -z "$t" ]] || touch -d "$t" "$BCACHE/$s"; }
+  done
+  rm -rf "$BCACHE"/*.part
+  log "image cache: $n new image(s), $(du -sh "$CACHE" | cut -f1) in $CACHE; build cache $(du -sh "$BCACHE" 2>/dev/null | cut -f1)"
+}
+
+# expire_cache: drop entries past their age (see the header). Pinned =
+# a digest, or a tag with an x.y.z version in it.
+expire_cache() {
+  local f days
+  for f in "$CACHE"/*.tar; do
+    [[ -e "$f" ]] || continue
+    if [[ "$(basename "$f")" =~ sha256_|[0-9]+\.[0-9]+\.[0-9]+ ]]; then days=60; else days=7; fi
+    [[ -n "$(find "$f" -mtime +"$days")" ]] && rm -f "$f" && echo "  expired: $(basename "$f")"
+  done
+  find "$BCACHE" -mindepth 1 -maxdepth 1 -type d -mtime +7 -print -exec rm -rf {} + 2>/dev/null \
+    | sed 's|.*/|  expired build cache: |' || true
+}
+
+cache_cmd() {
+  case "${1:-ls}" in
+    ls)
+      local f
+      for f in "$CACHE"/*.tar "$BCACHE"/*; do
+        [[ -e "$f" ]] || continue
+        printf '  %-70s %6s  %s days\n' "${f#"$(dirname "$CACHE")"/}" "$(du -sh "$f" | cut -f1)" \
+          $(( ($(date +%s) - $(stat -c %Y "$f")) / 86400 ))
+      done
+      echo "  total $(du -sh "$(dirname "$CACHE")" 2>/dev/null | cut -f1) in $(dirname "$CACHE")" ;;
+    clear)
+      case "${2:-all}" in
+        all) rm -rf "$CACHE" "$BCACHE" ;;
+        images) rm -rf "$CACHE" ;;
+        build) rm -rf "$BCACHE" ;;
+        *) find "$CACHE" "$BCACHE" -mindepth 1 -maxdepth 1 -name "*$2*" -print -exec rm -rf {} + 2>/dev/null || true ;;
+      esac
+      echo "cleared: ${2:-all}" ;;
+    *) echo "usage: tests/vm.sh cache [ls | clear [all|images|build|<name>]]"; exit 1 ;;
+  esac
+}
+
+# finish: a passed run deletes its VM unless KEEP_VM is set.
+finish() { if [[ -n "${KEEP_VM:-}" ]]; then log "keeping $VM (KEEP_VM)"; else down; fi; }
 
 verify() {
   local ip; ip="$(vm_ip)"
@@ -171,22 +359,54 @@ PY
 down() { log "deleting $VM"; incus delete -f "$VM" 2>/dev/null || true; }
 
 full() {
+  timed check "$HERE/check.sh"
   # Fresh VM: a scoped run's leftover config would narrow the stacks.
-  down; up; install; verify; install; verify
-  ssh_vm -t 'cd homelab && tests/restore-test.sh'
-  ssh_vm -t 'bash homelab/tests/rebuild-test.sh'
+  down
+  timed up up
+  timed preload preload
+  timed install install
+  timed cache save_cache
+  timed verify verify
+  timed rerun install
+  timed verify2 verify
+  timed restore ssh_vm -t 'cd homelab && tests/restore-test.sh'
+  timed rebuild ssh_vm -t 'bash homelab/tests/rebuild-test.sh'
+  finish
 }
 
-# scoped <scope.sh output>: a fresh VM with only those stacks.
+# suite: every stack, install + verify + re-install + verify; no drills.
+suite() {
+  timed check "$HERE/check.sh"
+  down
+  timed up up
+  timed preload preload
+  timed install install
+  timed cache save_cache
+  timed verify verify
+  timed rerun install
+  timed verify2 verify
+  finish
+}
+
+# scoped <scope.sh output>: what that level needs (see the header).
 scoped() {
   case "$1" in
-    none) log "docs-only change: nothing to test in a VM" ;;
-    full) log "shared code changed: full suite"; full ;;
+    none) log "docs only: nothing to run" ;;
+    check) log "host-only checks"; "$HERE/check.sh" ;;
+    install) log "shared code: install suite, no drills"; suite ;;
+    full) log "backup/restore code: full suite"; full ;;
     stacks\ *)
       export TEST_STACKS="${1#stacks }"
       log "scoped run: $TEST_STACKS"
-      down; up; install; verify
-      log "scoped run passed: $TEST_STACKS" ;;
+      timed check "$HERE/check.sh"
+      down
+      timed up up
+      timed preload preload
+      timed install install
+      timed cache save_cache
+      timed verify verify
+      log "scoped run passed: $TEST_STACKS"
+      finish ;;
     *) echo "unexpected scope: $1"; exit 1 ;;
   esac
 }
@@ -198,12 +418,15 @@ case "${1:-all}" in
   rerun) install ;;
   restore) log "restore test (in the VM)"; ssh_vm -t 'cd homelab && tests/restore-test.sh' ;;
   rebuild) log "rebuild from backups (in the VM)"; ssh_vm -t 'bash homelab/tests/rebuild-test.sh' ;;
+  cache) cache_cmd "${@:2}" ;;
   ssh) ssh_vm -t 'cd homelab 2>/dev/null; exec bash -l' ;;
   down) down ;;
   all) full ;;
+  suite) suite ;;
+  check) "$HERE/check.sh" ;;
   scope) "$HERE/scope.sh" "${2:-origin/master}" ;;
   changed) scoped "$("$HERE/scope.sh" "${2:-origin/master}")" ;;
   stacks) [[ -n "${2:-}" ]] || { echo 'usage: tests/vm.sh stacks "a b"'; exit 1; }
           scoped "$("$HERE/scope.sh" --stacks "$2")" ;;
-  *) sed -n '2,26p' "$0"; exit 1 ;;
+  *) sed -n '2,64p' "$0"; exit 1 ;;
 esac

@@ -8,7 +8,8 @@ ROOT="$PWD"
 source lib/common.sh
 load_config
 
-step() { printf '\n\e[1;35m[restore-test]\e[0m %s\n' "$*"; }
+T0=$SECONDS
+step() { printf '\n\e[1;35m[restore-test %s +%dm%02ds]\e[0m %s\n' "$(date +%T)" $(((SECONDS - T0) / 60)) $(((SECONDS - T0) % 60)) "$*"; }
 fail() { printf '\e[31mFAIL:\e[0m %s\n' "$*"; exit 1; }
 https() { # <host> <curl args...>
   local h="$1.$DOMAIN"; shift

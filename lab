@@ -3,7 +3,8 @@
 #
 #   lab ls                     all stacks, enabled or not, with descriptions
 #   lab status                 running containers, with their tier
-#   lab up      [stack...]     render config, start stacks (default: enabled)
+#   lab up      [stack...]     render config, start stacks (default: enabled);
+#                              --parallel / --serial (default LAB_UP_MODE=auto)
 #   lab down    [stack...]     stop and remove containers (data is kept)
 #   lab restart [stack...]
 #   lab stop    [stack...]     stop without removing containers
@@ -71,6 +72,56 @@ dc() {
 ensure_net() {
   docker network inspect "$PROXY_NET" >/dev/null 2>&1 \
     || docker network create "$PROXY_NET" >/dev/null
+}
+
+# up_mode <count>: parallel or serial for starting <count> stacks.
+# LAB_UP_MODE in homelab.env: parallel, serial, or auto (default): parallel
+# when more than two stacks start on a machine with 4+ CPUs and 8+ GB RAM.
+# Parallel is faster (stacks wait for their health checks side by side);
+# serial shows each stack's output live, for debugging a start or a small
+# machine.
+up_mode() {
+  local m="${UP_MODE_FLAG:-${LAB_UP_MODE:-auto}}" ram
+  if [[ "$m" == auto ]]; then
+    ram="$(awk '/MemTotal/ { print int($2 / 1048576) }' /proc/meminfo 2>/dev/null || echo 0)"
+    if (($1 > 2)) && (($(nproc) >= 4)) && ((ram >= 8)); then m=parallel; else m=serial; fi
+  fi
+  echo "$m"
+}
+
+up_one() { dc "$1" up -d --build --remove-orphans; }
+
+# up_parallel <stacks...>: caddy (FIRST) alone, then the rest LAB_UP_JOBS
+# (default 6) at a time; a stack whose NEEDS are in this run waits for
+# them. Output per stack in rendered/up-logs/<stack>.log, shown on failure.
+up_parallel() {
+  local logs="$RENDER_DIR/up-logs" jobs="${LAB_UP_JOBS:-6}" s pid rc t
+  local -a todo=() failed=()
+  local -A pid_stack=() started=() state=()
+  mkdir -p "$logs"
+  for s in "$@"; do
+    if [[ "$s" == caddy ]]; then echo "== caddy"; up_one caddy || failed+=(caddy); state[caddy]=done
+    else todo+=("$s"); state[$s]=wait; fi
+  done
+  echo "== starting ${#todo[@]} stack(s), up to $jobs at a time (logs: rendered/up-logs/)"
+  ready() { # its NEEDS that are in this run have finished
+    local x; for x in $(stack_meta "$1" NEEDS); do [[ "${state[$x]:-done}" == done ]] || return 1; done; return 0; }
+  while :; do
+    for s in "${todo[@]}"; do
+      ((${#pid_stack[@]} < jobs)) || break
+      [[ "${state[$s]}" == wait ]] && ready "$s" || continue
+      ( up_one "$s" ) > "$logs/$s.log" 2>&1 &
+      pid_stack[$!]="$s"; started[$s]=$SECONDS; state[$s]=run
+    done
+    ((${#pid_stack[@]})) || break
+    rc=0; wait -n -p pid "${!pid_stack[@]}" || rc=$?
+    s="${pid_stack[$pid]}"; unset "pid_stack[$pid]"; state[$s]=done
+    t=$((SECONDS - started[$s]))
+    if ((rc == 0)); then ok "$s (${t}s)"
+    else bad "$s failed after ${t}s: rendered/up-logs/$s.log"; tail -n 15 "$logs/$s.log" | sed 's/^/      /'
+      failed+=("$s"); fi
+  done
+  ((${#failed[@]} == 0)) || { warn "failed: ${failed[*]}"; return 1; }
 }
 
 caddy_reload() {
@@ -145,10 +196,19 @@ case "$cmd" in
     docker ps -a --filter label=com.docker.compose.project \
       --format 'table {{.Label "com.docker.compose.project"}}\t{{.Names}}\t{{.Status}}\t{{.Label "lab.tier"}}' ;;
   up|resume)
+    args=()
+    for a in "$@"; do
+      case "$a" in --parallel) UP_MODE_FLAG=parallel ;; --serial) UP_MODE_FLAG=serial ;; *) args+=("$a") ;; esac
+    done
+    set -- "${args[@]}"
     render_all
     ensure_net
-    for s in $(pick "$@"); do echo "== $s"; dc "$s" up -d --build --remove-orphans; done
-    caddy_reload ;;
+    mapfile -t list < <(pick "$@")
+    rc=0
+    if [[ "$(up_mode "${#list[@]}")" == parallel ]]; then up_parallel "${list[@]}" || rc=$?
+    else for s in "${list[@]}"; do echo "== $s"; up_one "$s" || rc=$?; done; fi
+    caddy_reload
+    ((rc == 0)) || die "some stacks did not start (see above)" ;;
   down)
     for s in $(pick "$@" | tac); do echo "== $s"; dc "$s" down; done ;;
   restart)

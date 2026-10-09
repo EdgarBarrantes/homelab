@@ -1,16 +1,31 @@
 #!/usr/bin/env bash
-# Which stacks does a change need tested? Prints one line:
-#   full              shared code changed: run the whole suite
-#   none              docs only: no VM needed
-#   stacks <a b ...>  only these (with what they need and what needs them)
+# How much testing does a change need? Prints one line, the highest level
+# any changed file asks for:
+#   none              docs, setup texts, the map: nothing to run
+#   check             host-only checks, seconds (tests/check.sh): a tile, a
+#                     description, documented env keys, an image bump within
+#                     the same major version, the HA/remote-pause extras
+#   stacks <a b ...>  a scoped VM run of these stacks (with what they need,
+#                     what needs them, and their TEST_WITH): a stack's runtime
+#                     (compose services, Dockerfile, scripts, its route), a
+#                     major image bump, a new stack
+#   install           every stack: install, verify, re-install, verify; no
+#                     drills: shared code (lab, lib/, install.sh, Caddy, the
+#                     test harness)
+#   full              install + the restore and rebuild drills: backup and
+#                     restore code, the drills, a stack's PG_*/BACKUP_PATHS,
+#                     and shared code whose diff mentions backups/restores
 #
 #   tests/scope.sh [base]            changes since base (default origin/master),
 #                                    committed or not
 #   tests/scope.sh --stacks "a b"    expand an explicit list
+#   tests/scope.sh --classify FILE   level for one file, its diff on stdin
+#                                    (used by tests/check.sh's self-test)
 #
 # A stack pulls in its NEEDS, the stacks whose NEEDS name it, and its
 # TEST_WITH (stacks that interact with it without needing it, e.g.
 # paperless-ngx and actual-budget). caddy and homepage are always in.
+# Unknown paths count as install: when in doubt, test more.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -46,23 +61,75 @@ if [[ "${1:-}" == --stacks ]]; then
   exit 0
 fi
 
+LEVELS=(none check stacks install full)
+
+# classify <file> <changed lines>: prints "<level> [stack]".
+classify() {
+  local f="$1" lines="$2" s=""
+  case "$f" in
+    stacks/*/*|tests/stacks/*) s="${f#stacks/}"; s="${s#tests/}"; s="${s#stacks/}"; s="${s%%/*}"; s="${s%.sh}" ;;
+  esac
+  case "$f" in
+    *.md|docs/*|LICENSE|.gitignore|extras/topology/*|stacks/*/setup.txt) echo none ;;
+    tests/scope.sh|tests/check.sh|homelab.env.example|stacks/*/homepage.yaml|stacks/*/.env.example \
+      |extras/remote-pause/*|extras/homeassistant/*) echo check ;;
+    stacks/*/stack.conf)
+      if grep -qE '^[+-](PG_[A-Z_]*|BACKUP_PATHS)=' <<<"$lines"; then echo full
+      elif grep -vE '^[+-](DESCRIPTION|GROUP|RAM_GB|DISK_GB)=' <<<"$lines" | grep -q .; then echo "stacks $s"
+      else echo check; fi ;;
+    stacks/caddy/*) echo install ;;
+    stacks/*/*.yml)
+      if image_bump_only "$lines"; then echo check; else echo "stacks $s"; fi ;;
+    stacks/*/*|tests/stacks/*) echo "stacks $s" ;;
+    tests/fixtures/import-test.epub) echo "stacks calibre-web" ;;
+    extras/paperless-ai/*) echo "stacks paperless-ngx" ;;
+    lib/restore.sh|extras/backup/*|tests/restore-test.sh|tests/rebuild-test.sh) echo full ;;
+    lib/*|lab|install.sh|tests/vm.sh|tests/vm.env|tests/fixtures/*)
+      if grep -qiE 'backup|restore|restic|PG_' <<<"$lines"; then echo full; else echo install; fi ;;
+    *) echo install ;;
+  esac
+}
+
+# image_bump_only <changed lines>: only `image:` lines changed, pairwise,
+# and each keeps its major version (26.9.0 -> 26.10.1 yes, 2.x -> 3.x no).
+image_bump_only() {
+  local old=() new=() l i major
+  [[ -n "$1" ]] || return 1
+  major() { sed -E 's/.*:([^:@]*)(@.*)?$/\1/; s/^[^0-9]*([0-9]+).*/\1/' <<<"$1"; }
+  while IFS= read -r l; do
+    case "$l" in
+      -*image:*) old+=("$l") ;;
+      +*image:*) new+=("$l") ;;
+      *) return 1 ;;
+    esac
+  done <<<"$1"
+  ((${#old[@]} == ${#new[@]})) || return 1
+  for i in "${!old[@]}"; do
+    [[ "$(sed -E 's/^-\s*image:\s*([^:@]*).*/\1/' <<<"${old[$i]}")" == "$(sed -E 's/^\+\s*image:\s*([^:@]*).*/\1/' <<<"${new[$i]}")" ]] || return 1
+    [[ "$(major "${old[$i]}")" == "$(major "${new[$i]}")" ]] || return 1
+  done
+}
+
+if [[ "${1:-}" == --classify ]]; then classify "$2" "$(cat)"; exit 0; fi
+
 base="${1:-origin/master}"
 files="$( { git diff --name-only "$base"...HEAD; git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u)"
 [[ -n "$files" ]] || { echo none; exit 0; }
 
-stacks=() full=0
+level=0 stacks=()
 while IFS= read -r f; do
-  case "$f" in
-    stacks/caddy/*) full=1 ;;          # every route goes through it
-    stacks/*/*) s="${f#stacks/}"; stacks+=("${s%%/*}") ;;
-    tests/stacks/*) s="${f#tests/stacks/}"; stacks+=("${s%.sh}") ;;
-    tests/fixtures/import-test.epub) stacks+=(calibre-web) ;;
-    *.md|docs/*|extras/topology/*|LICENSE|.gitignore) ;;
-    *) full=1 ;;                        # lib/, lab, install.sh, extras/backup, tests/, ...
-  esac
+  if git ls-files --error-unmatch -- "$f" >/dev/null 2>&1 || git cat-file -e "$base:$f" 2>/dev/null; then
+    lines="$( { git diff "$base"...HEAD -- "$f"; git diff HEAD -- "$f"; } | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' || true)"
+  else
+    lines="$( [[ -f "$f" ]] && sed 's/^/+/' "$f" || true)"
+  fi
+  read -r lv s <<<"$(classify "$f" "$lines")"
+  for i in "${!LEVELS[@]}"; do [[ "${LEVELS[$i]}" == "$lv" ]] && n=$i; done
+  ((n > level)) && level=$n
+  [[ -n "${s:-}" ]] && stacks+=("$s")
 done <<<"$files"
 
-if ((full)); then echo full
-elif ((${#stacks[@]} == 0)); then echo none
-else expand "$(printf '%s\n' "${stacks[@]}" | sort -u | tr '\n' ' ')"
-fi
+case "${LEVELS[$level]}" in
+  stacks) expand "$(printf '%s\n' "${stacks[@]}" | sort -u | tr '\n' ' ')" ;;
+  *) echo "${LEVELS[$level]}" ;;
+esac
