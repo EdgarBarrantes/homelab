@@ -6,6 +6,28 @@ HOMEPAGE_GROUPS=(Infrastructure Photos Documents AI Files Productivity Backups H
 
 gen_secret() { openssl rand -hex 24; }
 
+# gen_jwk_pair: a fresh RS256 key pair as two lines, PRIVATE=... and
+# PUBLIC=..., each a base64url-encoded JWK (the format wger's
+# generate-jwt-keys prints). openssl + the Python standard library only.
+gen_jwk_pair() {
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null \
+    | openssl pkey -text -noout | python3 -c '
+import base64, json, re, sys
+t = sys.stdin.read()
+def num(name):
+    m = re.search(name + r":\s*\n((?:\s+[0-9a-f:]+\n)+)", t)
+    return int(re.sub(r"[\s:]", "", m.group(1)), 16)
+def b64(n):
+    return base64.urlsafe_b64encode(n.to_bytes((n.bit_length() + 7) // 8, "big")).decode().rstrip("=")
+e = int(re.search(r"publicExponent: (\d+)", t).group(1))
+priv = {"kty": "RSA", "n": b64(num("modulus")), "e": b64(e), "d": b64(num("privateExponent")),
+        "p": b64(num("prime1")), "q": b64(num("prime2")), "dp": b64(num("exponent1")),
+        "dq": b64(num("exponent2")), "qi": b64(num("coefficient")), "alg": "RS256", "kid": "wger"}
+pub = {k: priv[k] for k in ("kty", "n", "e", "alg", "kid")}
+enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode()
+print("PRIVATE=" + enc(priv)); print("PUBLIC=" + enc(pub))'
+}
+
 # stack_env <stack>: create stacks/<s>/.env from .env.example once, fill
 # generated secrets that are still empty, sync the keys we manage.
 stack_env() {
@@ -36,6 +58,16 @@ stack_env() {
       # A password typed on a phone, like ntfy's.
       k="${s^^}_PASSWORD"
       [[ -n "$(env_get "$env" "$k")" ]] || env_set "$env" "$k" "$(openssl rand -hex 10)" ;;
+    vikunja|wger)
+      # Logins typed on a phone, like anki's.
+      k="${s^^}_ADMIN_PASSWORD"
+      [[ -n "$(env_get "$env" "$k")" ]] || env_set "$env" "$k" "$(openssl rand -hex 10)"
+      if [[ "$s" == wger && -z "$(env_get "$env" JWT_PRIVATE_KEY)" ]]; then
+        # Signs the mobile app's logins and PowerSync tokens.
+        local pair; pair="$(gen_jwk_pair)"
+        env_set "$env" JWT_PRIVATE_KEY "$(sed -n 's/^PRIVATE=//p' <<<"$pair")"
+        env_set "$env" JWT_PUBLIC_KEY "$(sed -n 's/^PUBLIC=//p' <<<"$pair")"
+      fi ;;
     dawarich)
       # Rails wants a long secret_key_base.
       [[ -n "$(env_get "$env" SECRET_KEY_BASE)" ]] || env_set "$env" SECRET_KEY_BASE "$(openssl rand -hex 64)" ;;

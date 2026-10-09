@@ -1,0 +1,5 @@
+- Vikunja:
+    icon: vikunja.png
+    href: https://tasks.${DOMAIN}
+    siteMonitor: https://tasks.${DOMAIN}
+    description: Tasks and projects

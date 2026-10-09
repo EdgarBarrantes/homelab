@@ -1,0 +1,8 @@
+Vikunja (https://tasks.${DOMAIN}): log in as admin, password:
+  lab secret vikunja VIKUNJA_ADMIN_PASSWORD
+  (change the username, email and password under Settings if you like;
+  registration is off, so this is the only account).
+Phone: any CalDAV app (DAVx5 + a tasks app) with
+  https://tasks.${DOMAIN}/dav/principals/<username>/ and an API token or
+  the password; or Vikunja's web app added to the home screen.
+API tokens (Home Assistant, scripts): Settings > API Tokens.

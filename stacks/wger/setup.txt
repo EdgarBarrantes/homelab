@@ -1,0 +1,9 @@
+wger (https://gym.${DOMAIN}): log in as admin, password:
+  lab secret wger WGER_ADMIN_PASSWORD
+  (change it, and your email, under Settings; registration is off).
+  The first start takes a few minutes (database, exercise list). Exercise
+  images and the ingredient database arrive with the weekly sync; to get
+  them now: lab compose wger exec web python3 manage.py download-exercise-images
+Phone: the wger app (Play Store, F-Droid, App Store), "custom server"
+  https://gym.${DOMAIN}; the phone needs to reach the server (VPN). Offline
+  mode syncs through the same address (/ps/).

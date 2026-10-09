@@ -1,0 +1,60 @@
+name: vikunja
+
+# Vikunja: tasks, projects, kanban, Gantt, calendar and CalDAV. Registration
+# is off; start.sh creates the one account on first start (VIKUNJA_ADMIN_*).
+# Attachments in ./data/files, everything else in Postgres (nightly dump).
+# https://vikunja.io/docs/config-options/
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: vikunja_db
+    restart: unless-stopped
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: vikunja
+    healthcheck:
+      test: pg_isready -U postgres -d vikunja
+      interval: 10s
+      retries: 5
+
+  vikunja:
+    # The upstream image is only the binary (FROM scratch, no shell), so it
+    # is copied into a small Alpine image with start.sh.
+    build:
+      context: .
+      args: {VIKUNJA_VERSION: 2.7.0}
+    image: local/vikunja:2.7.0
+    container_name: vikunja
+    restart: unless-stopped
+    user: "${PUID}:${PGID}"
+    networks: [default, proxy]
+    environment:
+      VIKUNJA_SERVICE_PUBLICURL: https://tasks.${DOMAIN}/
+      VIKUNJA_SERVICE_SECRET: ${VIKUNJA_JWT_SECRET}
+      VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
+      VIKUNJA_SERVICE_TIMEZONE: ${TZ}
+      VIKUNJA_DATABASE_TYPE: postgres
+      VIKUNJA_DATABASE_HOST: vikunja_db
+      VIKUNJA_DATABASE_USER: postgres
+      VIKUNJA_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      VIKUNJA_DATABASE_DATABASE: vikunja
+      VIKUNJA_FILES_BASEPATH: /app/vikunja/files
+      VIKUNJA_ADMIN_USER: ${VIKUNJA_ADMIN_USER:-admin}
+      VIKUNJA_ADMIN_EMAIL: admin@${DOMAIN}
+      VIKUNJA_ADMIN_PASSWORD: ${VIKUNJA_ADMIN_PASSWORD}
+    volumes:
+      - ./data/files:/app/vikunja/files
+    healthcheck:
+      test: ["CMD", "/app/vikunja/vikunja", "healthcheck"]
+      interval: 30s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      db: {condition: service_healthy}
+
+networks:
+  proxy:
+    external: true

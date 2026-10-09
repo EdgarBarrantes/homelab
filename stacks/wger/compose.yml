@@ -1,0 +1,197 @@
+name: wger
+
+# wger: workouts, body weight, measurements and nutrition, with the exercise
+# and ingredient databases synced weekly from wger.de (celery). Follows the
+# official docker setup (github.com/wger-project/docker): gunicorn behind
+# its own nginx (static and media files), Redis, celery worker and beat,
+# and PowerSync for the mobile app's offline mode. Registration is off; the
+# account is "admin", password WGER_ADMIN_PASSWORD (set by first-login.py,
+# replacing wger's default). The image runs as uid 1000, which owns ./data.
+# https://wger.readthedocs.io/en/latest/
+x-env: &env
+  TZ: ${TZ}
+  TIME_ZONE: ${TZ}
+  SECRET_KEY: ${WGER_SECRET_KEY}
+  SITE_URL: https://gym.${DOMAIN}
+  CSRF_TRUSTED_ORIGINS: https://gym.${DOMAIN}
+  X_FORWARDED_PROTO_HEADER_SET: "True"
+  JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+  JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+  # wger takes its database from this URL when it is set (and PowerSync
+  # replicates from it).
+  PS_DATABASE_URI: postgres://wger:${POSTGRES_PASSWORD}@wger_db:5432/wger
+  PS_STORAGE_PG_URI: postgres://powersync_storage:${POWERSYNC_PASSWORD}@wger_db:5432/wger
+  POWERSYNC_URL_PATH: ps
+  DJANGO_PERFORM_MIGRATIONS: "True"
+  DJANGO_DEBUG: "False"
+  DJANGO_COLLECTSTATIC_ON_STARTUP: "True"
+  DJANGO_CLEAR_STATIC_FIRST: "False"
+  DJANGO_CACHE_BACKEND: django_redis.cache.RedisCache
+  DJANGO_CACHE_LOCATION: redis://wger_cache:6379/1
+  DJANGO_CACHE_TIMEOUT: "1296000"
+  DJANGO_CACHE_CLIENT_CLASS: django_redis.client.DefaultClient
+  USE_CELERY: "True"
+  CELERY_BROKER: redis://wger_cache:6379/2
+  CELERY_BACKEND: redis://wger_cache:6379/2
+  CELERY_WORKER_CONCURRENCY: "2"
+  ALLOW_REGISTRATION: "False"
+  ALLOW_GUEST_USERS: "False"
+  ALLOW_UPLOAD_VIDEOS: "False"
+  WGER_INSTANCE: https://wger.de
+  SYNC_EXERCISES_ON_STARTUP: "True"
+  SYNC_EXERCISES_CELERY: "True"
+  SYNC_EXERCISE_IMAGES_CELERY: "True"
+  SYNC_EXERCISE_VIDEOS_CELERY: "False"
+  SYNC_INGREDIENTS_CELERY: "True"
+  SYNC_INGREDIENTS_DUMP_URL: https://wger.de/media/ingredients/ingredients.jsonl.gz
+  DOWNLOAD_INGREDIENTS_FROM: WGER
+  CACHE_API_EXERCISES_CELERY: "True"
+  CACHE_API_EXERCISES_CELERY_FORCE_UPDATE: "True"
+  # Caddy and this stack's nginx are both in front of gunicorn.
+  NUMBER_OF_PROXIES: "2"
+  AXES_ENABLED: "True"
+  AXES_FAILURE_LIMIT: "10"
+  AXES_COOLOFF_TIME: "30"
+  AXES_HANDLER: axes.handlers.cache.AxesCacheHandler
+  AXES_LOCKOUT_PARAMETERS: ip_address
+  AXES_IPWARE_PROXY_COUNT: "2"
+  AXES_IPWARE_META_PRECEDENCE_ORDER: HTTP_X_FORWARDED_FOR,REMOTE_ADDR
+  WGER_USE_GUNICORN: "True"
+  GUNICORN_CMD_ARGS: --workers 2 --threads 2 --worker-class gthread --timeout 240
+  USE_RECAPTCHA: "False"
+  EXPOSE_PROMETHEUS_METRICS: "False"
+  FROM_EMAIL: wger <wger@${DOMAIN}>
+
+x-logging: &logging
+  options: {max-size: 10m, max-file: "3"}
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: wger_db
+    restart: unless-stopped
+    shm_size: 256mb
+    # Logical replication for PowerSync.
+    command: [postgres, -c, wal_level=logical, -c, max_connections=50]
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: wger
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: wger
+      TZ: ${TZ}
+    healthcheck:
+      test: pg_isready -h localhost -U wger -d wger
+      interval: 10s
+      retries: 5
+    logging: *logging
+
+  cache:
+    image: redis:7.4-alpine
+    container_name: wger_cache
+    restart: unless-stopped
+    command: redis-server --save 3600 1 --save 300 100 --appendonly no
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: redis-cli ping | grep -q PONG
+      interval: 10s
+      retries: 5
+    logging: *logging
+
+  web:
+    image: wger/server:2.7.0
+    container_name: wger_web
+    restart: unless-stopped
+    environment: *env
+    volumes:
+      - ./data/static:/home/wger/static
+      - ./data/media:/home/wger/media
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8000/api/v2/version/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 300s
+    depends_on:
+      db: {condition: service_healthy}
+      cache: {condition: service_healthy}
+    logging: *logging
+
+  worker:
+    image: wger/server:2.7.0
+    container_name: wger_worker
+    restart: unless-stopped
+    # First: PowerSync's storage role and schema (idempotent) and the admin
+    # password (only while wger's default is still set). Then the worker.
+    entrypoint:
+      - sh
+      - -c
+      - python3 manage.py setup-powersync-storage && python3 manage.py shell < /setup/first-login.py && exec /start-worker
+    environment:
+      <<: *env
+      WGER_ADMIN_PASSWORD: ${WGER_ADMIN_PASSWORD}
+    volumes:
+      - ./data/media:/home/wger/media
+      - ./first-login.py:/setup/first-login.py:ro
+    healthcheck:
+      test: ["CMD", "celery", "-A", "wger", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      web: {condition: service_healthy}
+    logging: *logging
+
+  beat:
+    image: wger/server:2.7.0
+    container_name: wger_beat
+    restart: unless-stopped
+    command: /start-beat
+    environment: *env
+    volumes:
+      - ./data/beat:/home/wger/beat
+    depends_on:
+      worker: {condition: service_healthy}
+    logging: *logging
+
+  powersync:
+    image: journeyapps/powersync-service:1.26.1
+    container_name: wger_powersync
+    restart: unless-stopped
+    command: [start, -r, unified]
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/powersync.yaml
+      PS_DATABASE_URI: postgres://wger:${POSTGRES_PASSWORD}@wger_db:5432/wger
+      PS_STORAGE_PG_URI: postgres://powersync_storage:${POWERSYNC_PASSWORD}@wger_db:5432/wger
+      PS_PORT: "8080"
+      PS_JWKS_URL: http://web:8000/api/v2/powersync-keys
+    volumes:
+      - ./powersync:/config:ro
+    depends_on:
+      worker: {condition: service_healthy}
+    logging: *logging
+
+  nginx:
+    image: nginx:1.28-alpine
+    container_name: wger_nginx
+    restart: unless-stopped
+    networks: [default, proxy]
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./data/static:/wger/static:ro
+      - ./data/media:/wger/media:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/v2/version/"]
+      interval: 30s
+      retries: 5
+    depends_on:
+      web: {condition: service_healthy}
+      powersync: {condition: service_started}
+    logging: *logging
+
+networks:
+  proxy:
+    external: true

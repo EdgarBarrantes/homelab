@@ -1,0 +1,5 @@
+- wger:
+    icon: wger.png
+    href: https://gym.${DOMAIN}
+    siteMonitor: https://gym.${DOMAIN}
+    description: Workouts and body weight
