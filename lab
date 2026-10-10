@@ -40,6 +40,8 @@ source "$ROOT/lib/doctor.sh"
 # shellcheck source=lib/restore.sh
 source "$ROOT/lib/restore.sh"
 
+# Help works before anything is set up: the header comment, however long.
+case "${1:-}" in help|-h|--help) awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; exit 0 ;; esac
 load_config || die "no homelab.env yet: run ./install.sh first"
 
 # Use the given stacks, or all enabled ones when none were given.
@@ -300,6 +302,5 @@ case "$cmd" in
     esac ;;
   restore)
     run_restore "$@" ;;
-  help|-h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) die "unknown command: $cmd (try: lab help)" ;;
 esac

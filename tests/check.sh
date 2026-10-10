@@ -70,6 +70,12 @@ for ex in stacks/*/.env.example; do
 done
 pass "documented env keys ($n)"
 
+# lab help: the whole header comment, nothing else.
+n_head="$(awk 'NR == 1 { next } /^#/ { n++; next } { exit } END { print n }' lab)"
+help="$(ROOT="$ROOT" ./lab help 2>&1)" || true
+if [[ "$(wc -l <<<"$help")" == "$n_head" ]] && ! grep -qE 'set -e|^#' <<<"$help"; then pass "lab help ($n_head lines)"
+else fail "lab help doesn't match lab's header comment ($n_head lines)"; fi
+
 # scope.sh: known changes, expected levels.
 t=0
 expect() { # expect <level...> <file> <diff lines>
