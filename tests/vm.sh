@@ -120,11 +120,25 @@ up() {
   [[ -f "$KEY" ]] || ssh-keygen -q -t ed25519 -N '' -C homelab-vm-test -f "$KEY"
   if incus info "$VM" >/dev/null 2>&1; then log "$VM already exists"; else
     log "creating $VM"
-    local try
-    # The client sometimes hangs talking to the image server (the daemon
-    # never sees an operation): give up after 5 minutes and try once more.
+    local try img=homelab-test-ubuntu
+    # Launch from a local copy of the image: the client sometimes hangs
+    # talking to the image server (the daemon never sees an operation).
+    # Refreshed weekly; a failed refresh keeps the old copy.
+    if ! incus image info "$img" >/dev/null 2>&1 || [[ -n "$(find "$STATE/image-stamp" -mtime +7 2>/dev/null)" ]] \
+       || [[ ! -f "$STATE/image-stamp" ]]; then
+      log "refreshing the local Ubuntu 24.04 image"
+      if timeout 600 incus image copy images:ubuntu/24.04/cloud local: --vm --alias "$img.new" >/dev/null; then
+        incus image delete "$img" >/dev/null 2>&1 || true
+        incus image alias rename "$img.new" "$img" && touch "$STATE/image-stamp"
+      else
+        incus image alias delete "$img.new" >/dev/null 2>&1 || true
+        incus image info "$img" >/dev/null 2>&1 || { echo "no local image and the image server didn't answer"; exit 1; }
+        log "image server didn't answer: using the local copy"
+      fi
+    fi
+    # Still a timeout and one retry, for anything else that hangs.
     for try in 1 2; do
-      timeout 300 incus launch images:ubuntu/24.04/cloud "$VM" --vm \
+      timeout 300 incus launch "$img" "$VM" --vm \
         -c limits.cpu=4 -c limits.memory=12GiB -d root,size=40GiB \
         -c cloud-init.user-data="#cloud-config
 users:

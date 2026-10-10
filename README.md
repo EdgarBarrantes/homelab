@@ -154,7 +154,8 @@ lab config <stack> <KEY>    set a value in a stack's .env (hidden input)
 lab secret <stack> <KEY>    print one (e.g. a generated admin password)
 lab keys [--long] [stack]   which keys each .env has, set or empty, what they're for
 lab backup now | status | log
-lab restore [--dry-run]     bring data back from the backups
+lab restore [--dry-run]     bring data back from the backups (--from offsite)
+lab backup drill            prove the backups restore (read-only)
 lab compose <stack> ...     any docker compose command with lab's files
 ```
 

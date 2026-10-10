@@ -39,6 +39,9 @@ sudo systemctl start homelab-backup.service
 [[ "$(systemctl show homelab-backup.service -p Result --value)" == success ]] || { sudo tail -20 /var/log/homelab-backup.log; fail "backup failed"; }
 sudo tail -n 4 /var/log/homelab-backup.log
 
+step "backup drill: read-only restore checks of both copies"
+./lab backup drill --from both
+
 step "become a new machine: no databases, no data, new secrets, photos elsewhere"
 ./lab down >/dev/null 2>&1
 gone="$HOME/old-machine-$(date +%s)"; mkdir -p "$gone"
@@ -76,4 +79,14 @@ echo "Paperless: restore-marker tag is back"
 [[ "$(cat "$BOOKS_DIR/restore-marker.txt")" == "book marker" ]] || fail "book marker"
 echo "files: photo marker in the NEW photos folder, book marker back"
 ./lab doctor
+
+step "lose Paperless data again, restore it from the off-site copy"
+id="$(URL_PATH='/api/tags/?name__iexact=restore-marker' https docs -u "admin:$old_pl_pw" | python3 -c 'import sys,json; print(json.load(sys.stdin)["results"][0]["id"])')"
+URL_PATH="/api/tags/$id/" https docs -o /dev/null -X DELETE -u "admin:$old_pl_pw"
+[[ "$(URL_PATH='/api/tags/?name__iexact=restore-marker' https docs -u "admin:$old_pl_pw")" == *'"count":0'* ]] || fail "tag not deleted"
+./lab restore --from offsite --only paperless-ngx --yes
+wait_healthy paperless_webserver
+tags="$(URL_PATH='/api/tags/?name__iexact=restore-marker' https docs -u "admin:$old_pl_pw")"
+[[ "$tags" == *'"count":1'* ]] || fail "Paperless tag missing after the off-site restore: $tags"
+echo "Paperless: restore-marker tag is back, from the off-site copy"
 step "restore test passed"

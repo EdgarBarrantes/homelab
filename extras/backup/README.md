@@ -17,6 +17,25 @@ What it backs up, from each enabled stack's `stack.conf`:
 Every Sunday it also reads back 5% of the repository (`restic check
 --read-data-subset=5%`), so restores are tested, not only writes.
 
+## Drill: do the backups really restore?
+
+```bash
+./lab backup drill                    # the backup target and the off-site copy
+./lab backup drill --from offsite     # only one of them (primary | offsite)
+./lab backup drill --files 20         # more sample files (default 5)
+```
+
+Read-only: nothing in the backups or the running stacks changes. For each
+repository it takes the newest snapshot, restores a few random files that
+haven't changed since then into a scratch folder in `/var/tmp` and
+compares them with the live ones, and loads every stack's newest
+database dump into a throwaway Postgres (the stack's own image, no
+network) to compare its databases and table counts with the live ones.
+It ends with a summary: what it read, how long it took, how fast (which
+also tells you how long a full restore from that copy would take). Worth
+doing after setting up backups, after moving them, and a few times a
+year.
+
 Files it creates: `/etc/homelab/restic-password` (generated; **save a copy
 in your password manager**, the backups are useless without it),
 `/etc/homelab/smb-credentials` (SMB only), the units in
@@ -188,13 +207,22 @@ On a new machine:
    ./lab restore --date 2026-09-01       # dumps from that day or earlier
    ./lab restore --only immich,paperless-ngx
    ./lab restore --map /old/path=/new/path
+   ./lab restore --from offsite          # from the off-site copy instead
    ```
    For each stack it stops the stack, restores the files, moves the fresh
    database folder aside (`<folder>.pre-restore-<time>`, delete it once
    you're happy), loads the dump into a clean Postgres, resets the
    database password to this machine's generated one, and starts the stack
-   again. Paperless's search index is rebuilt afterwards. The backup timer
-   is paused meanwhile.
+   again. Stacks are restored side by side like `lab up` (one line per
+   stack, logs in `rendered/restore-logs/`; `--serial` for one after
+   another with live output). Paperless's search index is rebuilt
+   afterwards. The backup timer is paused meanwhile.
+
+   `--from offsite` reads the off-site copy (`BACKUP_OFFSITE`, e.g. Google
+   Drive through rclone with `/etc/homelab/rclone.conf`) when the backup
+   target itself is gone: same snapshots, and the dumps come out of the
+   snapshot, so `--date` can only pick days still kept there (7 daily, 4
+   weekly, 6 monthly).
 4. Actual Budget: the export is copied to `restore/`; import it in Actual
    (Files > Import file > Actual), then set its Sync ID with
    `./lab config actual-budget ACTUAL_BUDGET_SYNC_ID`.

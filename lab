@@ -22,8 +22,10 @@
 #   lab config <stack> <KEY>   set a value in a stack's .env (asks, hidden)
 #   lab secret <stack> <KEY>   print a value from a stack's .env
 #   lab keys [stack...|backup] the keys in each .env, documented (never values)
-#   lab backup [now|status|log] run or inspect the nightly backup
-#   lab restore [--dry-run]    bring data back from the backups (see --help)
+#   lab backup [now|status|log] run or inspect the nightly backup;
+#   lab backup drill [--from primary|offsite|both]  prove they restore (read-only)
+#   lab restore [--dry-run]    bring data back from the backups (see --help);
+#                              --from offsite: from the off-site copy
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
@@ -91,26 +93,22 @@ up_mode() {
 
 up_one() { dc "$1" up -d --build --remove-orphans; }
 
-# up_parallel <stacks...>: caddy (FIRST) alone, then the rest LAB_UP_JOBS
-# (default 6) at a time; a stack whose NEEDS are in this run waits for
-# them. Output per stack in rendered/up-logs/<stack>.log, shown on failure.
-up_parallel() {
-  local logs="$RENDER_DIR/up-logs" jobs="${LAB_UP_JOBS:-6}" s pid rc t
-  local -a todo=() failed=()
+# run_jobs <function> <log dir> <stacks...>: <function> <stack> for each,
+# LAB_UP_JOBS (default 6) at a time; a stack whose NEEDS are in the list
+# waits for them. One line per stack with its time; its output goes to
+# <log dir>/<stack>.log, shown (the end of it) when it fails.
+run_jobs() {
+  local fn="$1" logs="$2" jobs="${LAB_UP_JOBS:-6}" s pid rc t; shift 2
+  local -a todo=("$@") failed=()
   local -A pid_stack=() started=() state=()
   mkdir -p "$logs"
-  for s in "$@"; do
-    if [[ "$s" == caddy ]]; then echo "== caddy"; up_one caddy || failed+=(caddy); state[caddy]=done
-    else todo+=("$s"); state[$s]=wait; fi
-  done
-  echo "== starting ${#todo[@]} stack(s), up to $jobs at a time (logs: rendered/up-logs/)"
-  ready() { # its NEEDS that are in this run have finished
-    local x; for x in $(stack_meta "$1" NEEDS); do [[ "${state[$x]:-done}" == done ]] || return 1; done; return 0; }
+  for s in "${todo[@]}"; do state[$s]=wait; done
+  echo "== ${#todo[@]} stack(s), up to $jobs at a time (logs: ${logs#"$ROOT"/}/)"
   while :; do
     for s in "${todo[@]}"; do
       ((${#pid_stack[@]} < jobs)) || break
-      [[ "${state[$s]}" == wait ]] && ready "$s" || continue
-      ( up_one "$s" ) > "$logs/$s.log" 2>&1 &
+      [[ "${state[$s]}" == wait ]] && jobs_ready "$s" || continue
+      ( "$fn" "$s" ) > "$logs/$s.log" 2>&1 &
       pid_stack[$!]="$s"; started[$s]=$SECONDS; state[$s]=run
     done
     ((${#pid_stack[@]})) || break
@@ -118,10 +116,25 @@ up_parallel() {
     s="${pid_stack[$pid]}"; unset "pid_stack[$pid]"; state[$s]=done
     t=$((SECONDS - started[$s]))
     if ((rc == 0)); then ok "$s (${t}s)"
-    else bad "$s failed after ${t}s: rendered/up-logs/$s.log"; tail -n 15 "$logs/$s.log" | sed 's/^/      /'
+    else bad "$s failed after ${t}s: ${logs#"$ROOT"/}/$s.log"; tail -n 15 "$logs/$s.log" | sed 's/^/      /'
       failed+=("$s"); fi
   done
   ((${#failed[@]} == 0)) || { warn "failed: ${failed[*]}"; return 1; }
+}
+# jobs_ready <stack>: its NEEDS in this run (run_jobs' state) have finished.
+jobs_ready() {
+  local x; for x in $(stack_meta "$1" NEEDS); do [[ "${state[$x]:-done}" == done ]] || return 1; done
+  return 0
+}
+
+# up_parallel <stacks...>: caddy (FIRST) alone, then the rest with run_jobs.
+up_parallel() {
+  local s rest=() rc=0
+  for s in "$@"; do
+    if [[ "$s" == caddy ]]; then echo "== caddy"; up_one caddy || rc=1; else rest+=("$s"); fi
+  done
+  ((${#rest[@]} == 0)) || run_jobs up_one "$RENDER_DIR/up-logs" "${rest[@]}" || rc=1
+  return "$rc"
 }
 
 caddy_reload() {
@@ -282,7 +295,8 @@ case "$cmd" in
       status) systemctl list-timers homelab-backup.timer --no-pager
               systemctl status homelab-backup.service --no-pager -n 0 || true ;;
       log)    sudo tail -n 50 -f /var/log/homelab-backup.log ;;
-      *)      die "usage: lab backup [now|status|log]" ;;
+      drill)  shift; run_drill "$@" ;;
+      *)      die "usage: lab backup [now|status|log|drill]" ;;
     esac ;;
   restore)
     run_restore "$@" ;;
