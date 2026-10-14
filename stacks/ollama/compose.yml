@@ -26,7 +26,7 @@ services:
     # Builtin tools (tasks, notes, calendar...) are on for every model
     # without its own Workspace > Models entry and push prompts past small
     # models' context: turn them off per model (see docs/troubleshooting.md).
-    image: ghcr.io/open-webui/open-webui:v0.11.4
+    image: ghcr.io/open-webui/open-webui:v0.12.0
     container_name: open-webui
     restart: unless-stopped
     depends_on:
