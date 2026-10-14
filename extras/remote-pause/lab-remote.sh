@@ -11,6 +11,8 @@
 #           "reboot" is the OS's "reboot required" flag (set by updates)
 #   screen  {"brightness": 0-100, "volume": 0-100, "muted": bool} of the
 #           desktop session (null when nobody is logged in)
+#   lock    lock the desktop session's screen (what Super+Escape does). No
+#           locked state: COSMIC's locker doesn't set logind's LockedHint.
 #   brightness <0-100>  screen brightness; 0 is the dimmest, never off
 #   volume <0-100>      output volume (default sink)
 set -euo pipefail
@@ -26,6 +28,14 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
 COSMIC=(com.system76.CosmicSettingsDaemon /com/system76/CosmicSettingsDaemon com.system76.CosmicSettingsDaemon)
 bright_get() { busctl --user get-property "${COSMIC[@]}" "$1" 2>/dev/null | awk '{print $2}'; }
+# desktop_session: this user's graphical login session (to lock it).
+desktop_session() {
+  local s
+  for s in $(loginctl list-sessions --no-legend | awk -v u="$(id -un)" '$3 == u { print $1 }'); do
+    [[ "$(loginctl show-session "$s" -p Type --value)" =~ ^(wayland|x11)$ ]] && { echo "$s"; return 0; }
+  done
+  return 1
+}
 pct() { [[ "$1" =~ ^(100|[1-9]?[0-9])$ ]] || { echo "expected 0-100" >&2; exit 2; }; }
 
 cmd="${SSH_ORIGINAL_COMMAND:-status}"
@@ -78,10 +88,15 @@ print(json.dumps({
     raw=$(( (arg * m + 50) / 100 )); ((raw >= 1)) || raw=1
     busctl --user set-property "${COSMIC[@]}" DisplayBrightness i "$raw"
     exit 0 ;;
+  lock)
+    s="$(desktop_session)" || { echo "no desktop session" >&2; exit 1; }
+    echo "[$(date '+%F %T')] lock (from ${SSH_CLIENT%% *})" >> "$LOG"
+    loginctl lock-session "$s"
+    exit 0 ;;
   volume)
     wpctl set-volume @DEFAULT_AUDIO_SINK@ "$arg%"
     if ((arg > 0)); then wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; fi
     exit 0 ;;
-  *) echo "usage: pause | resume | status | doctor | screen | brightness <0-100> | volume <0-100>" >&2; exit 2 ;;
+  *) echo "usage: pause | resume | status | doctor | screen | lock | brightness <0-100> | volume <0-100>" >&2; exit 2 ;;
 esac
 if [ -n "$(heavy)" ]; then echo running; else echo paused; fi

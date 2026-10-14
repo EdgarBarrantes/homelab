@@ -16,11 +16,14 @@ else:
 
 - `screen`: brightness and volume of the desktop session as one JSON
   line (`{"brightness": 38, "volume": 60, "muted": false}`)
+- `lock`: lock the desktop session's screen, like Super+Escape
+  (`loginctl lock-session` on that session; logged). There is no locked
+  state to read back: COSMIC's locker doesn't report it to logind
 - `brightness <0-100>`: screen brightness (0 is the dimmest, never off);
   through COSMIC's settings daemon, so its own slider follows
 - `volume <0-100>`: output volume of the default sink (PipeWire)
 
-Every pause and resume is logged in `~/.local/state/lab-remote.log`.
+Every pause, resume and lock is logged in `~/.local/state/lab-remote.log`.
 
 ## Setup
 
