@@ -308,6 +308,18 @@ verify() {
   ssh_vm 'cat homelab/rendered/caddy-local-ca.crt' > "$STATE/ca.crt"
   # Hostnames of the installed stacks, plus the map and the overlay's route.
   local stacks s h code fails=0 hosts="map hello"
+  # On-demand stacks: plain `lab up` leaves them off; `lab up <stack>` starts
+  # them and prints their address (so their routes are up for the checks below).
+  if ssh_vm 'cd homelab && source <(grep "^STACKS=" homelab.env); od=""
+      for s in $STACKS; do grep -qx "ON_DEMAND=yes" "stacks/$s/stack.conf" && od+=" $s"; done
+      [[ -n "$od" ]] || exit 0
+      ./lab down $od >/dev/null 2>&1 && ./lab up >/dev/null 2>&1 || exit 1
+      for s in $od; do [[ -z "$(docker ps -q --filter label=com.docker.compose.project=$s)" ]] || { echo "$s started by lab up"; exit 1; }; done
+      out="$(./lab up $od)" || exit 1
+      for s in $od; do h="$(sed -n "s/^HOST=//p" "stacks/$s/stack.conf" | tr -d "\"")"
+        [[ -z "$h" ]] || grep -q "https://$h\." <<<"$out" || { echo "no address printed for $s"; exit 1; }; done'
+  then echo "  on-demand stacks (off with lab up, started by name with their address): ok"
+  else echo "  on-demand stacks: FAIL"; fails=$((fails + 1)); fi
   # lab keys: every key documented, and no value ever printed.
   if ssh_vm 'cd homelab && out="$(./lab keys)" && ! grep -q undocumented <<<"$out" || exit 1
       for f in stacks/*/.env extras/backup/.env; do [[ -f "$f" ]] || continue

@@ -1,0 +1,7 @@
+Kiwix (https://wiki.${DOMAIN}): serves every .zim file in ${ZIM_DIR}. It runs on demand:
+  ./lab up kiwix starts it (plain ./lab up doesn't), ./lab down kiwix stops it.
+  Download ZIMs from https://library.kiwix.org (e.g. wikipedia_en_all_maxi for all
+  of English Wikipedia with images, about 120 GB; _nopic and _mini are smaller),
+  put them in ${ZIM_DIR}, then ./lab restart kiwix. To update one, replace the file
+  with the newer one and restart: links don't change. ZIMs are not backed up
+  (they can be downloaded again).

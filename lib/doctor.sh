@@ -30,7 +30,11 @@ run_doctor() {
   DOC_BAD=0 DOC_WARN=0
 
   info "Containers"
+  local -A off=()  # on-demand stacks that are off: fine, and no route to check
   for s in $(enabled_stacks); do
+    if is_on_demand "$s" && ! stack_running "$s"; then
+      off[$s]=1; _dok "$s: off (on demand: ./lab up $s)"; continue
+    fi
     for c in $(stack_meta "$s" CONTAINERS); do
       st="$(container_state "$c")"
       case "$st" in
@@ -49,6 +53,7 @@ run_doctor() {
     else _dwarn "couldn't read Caddy's internal CA yet"; fi
   fi
   for s in $(enabled_stacks); do
+    [[ -z "${off[$s]:-}" ]] || continue
     host="$(stack_meta "$s" HOST)"; [[ -n "$host" ]] && hosts+=("$host")
   done
   hosts+=(map)

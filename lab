@@ -4,7 +4,9 @@
 #   lab ls                     all stacks, enabled or not, with descriptions
 #   lab status                 running containers, with their tier
 #   lab up      [stack...]     render config, start stacks (default: enabled);
-#                              --parallel / --serial (default LAB_UP_MODE=auto)
+#                              --parallel / --serial (default LAB_UP_MODE=auto).
+#                              On-demand stacks (lab ls) start only when named,
+#                              and print their address: lab up kiwix
 #   lab down    [stack...]     stop and remove containers (data is kept)
 #   lab restart [stack...]
 #   lab stop    [stack...]     stop without removing containers
@@ -205,7 +207,7 @@ case "$cmd" in
   ls)
     for s in $(all_stacks); do
       if is_enabled "$s"; then mark="${C_GRN}on ${C_0}"; else mark="${C_DIM}off${C_0}"; fi
-      printf '  %s  %-20s %s\n' "$mark" "$s" "$(stack_meta "$s" DESCRIPTION)"
+      printf '  %s  %-20s %s%s\n' "$mark" "$s" "$(stack_meta "$s" DESCRIPTION)" "$(is_on_demand "$s" && echo " (on demand)")"
     done ;;
   status|ps)
     docker ps -a --filter label=com.docker.compose.project \
@@ -218,12 +220,27 @@ case "$cmd" in
     set -- "${args[@]}"
     render_all
     ensure_net
-    mapfile -t list < <(pick "$@")
+    list=() off=()
+    if (($#)); then list=("$@")
+    else
+      # On-demand stacks stay as they are: off unless already running.
+      for s in $(enabled_stacks); do
+        if is_on_demand "$s" && ! stack_running "$s"; then off+=("$s"); else list+=("$s"); fi
+      done
+    fi
     rc=0
     if [[ "$(up_mode "${#list[@]}")" == parallel ]]; then up_parallel "${list[@]}" || rc=$?
     else for s in "${list[@]}"; do echo "== $s"; up_one "$s" || rc=$?; done; fi
     caddy_reload
-    ((rc == 0)) || die "some stacks did not start (see above)" ;;
+    ((rc == 0)) || die "some stacks did not start (see above)"
+    if (($#)); then
+      for s in "${list[@]}"; do
+        host="$(stack_meta "$s" HOST)"
+        [[ -n "$host" ]] && printf '  %-16s https://%s.%s\n' "$s" "$host" "$DOMAIN"
+        if is_on_demand "$s"; then echo "  $s runs on demand: stop it with ./lab down $s when you're done"; fi
+      done
+    fi
+    ((${#off[@]} == 0)) || echo "on demand, not started: ${off[*]} (start with ./lab up <stack>)" ;;
   down)
     for s in $(pick "$@" | tac); do echo "== $s"; dc "$s" down; done ;;
   restart)
@@ -244,7 +261,12 @@ case "$cmd" in
   update|pull)
     render_all
     ensure_net
-    for s in $(pick "$@"); do echo "== $s"; dc "$s" pull --ignore-buildable && dc "$s" up -d --build; done
+    for s in $(pick "$@"); do
+      echo "== $s"
+      # An on-demand stack that's off only gets its new images.
+      if (($# == 0)) && is_on_demand "$s" && ! stack_running "$s"; then dc "$s" pull --ignore-buildable
+      else dc "$s" pull --ignore-buildable && dc "$s" up -d --build; fi
+    done
     docker image prune -f ;;
   enable)
     [[ $# -ge 1 ]] || die "usage: lab enable <stack>..."

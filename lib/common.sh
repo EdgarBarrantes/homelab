@@ -108,12 +108,25 @@ enabled_stacks() {
 
 is_enabled() { [[ " ${STACKS:-} " == *" $1 "* ]]; }
 
+# On-demand stacks (ON_DEMAND=yes in stack.conf) are enabled but only run when
+# started by name (`lab up <stack>`); `lab up` alone, resume and restore leave
+# them off unless they're already running.
+is_on_demand() { is_yes "$(stack_meta "$1" ON_DEMAND)"; }
+# stack_running <stack>: any of its containers is running.
+stack_running() {
+  local c
+  for c in $(stack_meta "$1" CONTAINERS); do
+    [[ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" == true ]] && return 0
+  done
+  return 1
+}
+
 # stack_meta <stack> <KEY>: a value from stacks/<stack>/stack.conf.
 stack_meta() {
   ( # subshell: stack.conf variables must not leak
     DESCRIPTION='' GROUP='' HOST='' PUBLIC='' PUBLIC_PORT='' NEEDS='' GPU=''
     HEAVY='' RAM_GB=0 DISK_GB=0 SECRETS='' OVERLAYS='' DIRS='' PROFILES='' TEST_WITH=''
-    CONTAINERS='' BACKUP_PATHS=''
+    CONTAINERS='' BACKUP_PATHS='' ON_DEMAND=''
     PG_CONTAINER='' PG_SERVICE='' PG_USER='' PG_DUMP='' PG_PASSWORD_KEY='' PG_DATA=''
     # shellcheck disable=SC1090
     source "$STACKS_DIR/$1/stack.conf"

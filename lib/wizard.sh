@@ -140,6 +140,9 @@ Point *.<this> at this machine's Tailscale IP in Cloudflare DNS." "${DOMAIN:-hom
   [[ " $STACKS " == *" paperless-ngx "* ]] && set_ PAPERLESS_CONSUME_DIR "$(w_input "Paperless inbox folder (files dropped here get imported):" \
     "$( [[ "${PAPERLESS_CONSUME_DIR:-}" == /home/you/* || -z "${PAPERLESS_CONSUME_DIR:-}" ]] && echo "$HOME/Documents/Paperless" || echo "$PAPERLESS_CONSUME_DIR")")"
 
+  [[ " $STACKS " == *" kiwix "* ]] && set_ ZIM_DIR "$(w_input "Kiwix folder (put downloaded .zim files here):" \
+    "$( [[ "${ZIM_DIR:-}" == /home/you/* || -z "${ZIM_DIR:-}" ]] && echo "$HOME/Kiwix" || echo "$ZIM_DIR")")"
+
   if [[ " $STACKS " == *" immich-public-proxy "* || " $STACKS " == *" gokapi "* ]] && [[ $tls == cloudflare ]]; then
     set_ PUBLIC_DOMAIN "$(w_input "Public links through a Cloudflare Tunnel (Immich shares at share.<this>, Gokapi downloads at send.<this>).
 Your apex domain, e.g. example.com. Empty = keep everything private." "${PUBLIC_DOMAIN:-}")"

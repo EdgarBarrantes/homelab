@@ -239,7 +239,8 @@ summary() {
   info "Your services"
   for s in $(enabled_stacks); do
     host="$(stack_meta "$s" HOST)"
-    [[ -n "$host" ]] && printf '  %-16s https://%s.%s\n' "$s" "$host" "$DOMAIN"
+    [[ -n "$host" ]] && printf '  %-16s https://%s.%s%s\n' "$s" "$host" "$DOMAIN" \
+      "$(is_on_demand "$s" && echo "  (on demand: ./lab up $s)")"
     host="$(stack_meta "$s" PUBLIC)"
     [[ -n "$host" && -n "${PUBLIC_DOMAIN:-}" ]] && printf '  %-16s https://%s.%s  %s(public)%s\n' "" "$host" "$PUBLIC_DOMAIN" "$C_YLW" "$C_0"
   done

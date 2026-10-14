@@ -1,0 +1,31 @@
+name: kiwix
+
+# kiwix-serve: every *.zim file in ZIM_DIR (Wikipedia, Stack Exchange sites,
+# Project Gutenberg, iFixit, ...), with full-text search. Download ZIMs from
+# https://library.kiwix.org into ZIM_DIR, then `./lab restart kiwix`:
+# start.sh rebuilds the library index (./data/library.xml) from the folder
+# at every start. URLs leave out the ZIM's date (/content/wikipedia_en_all_maxi/...),
+# so links keep working when a ZIM is replaced by a newer one.
+# On demand (stack.conf): ./lab up kiwix to start it, ./lab down kiwix to stop.
+services:
+  kiwix:
+    image: ghcr.io/kiwix/kiwix-serve:3.8.1
+    container_name: kiwix
+    restart: unless-stopped
+    user: "${PUID}:${PGID}"
+    entrypoint: ["/usr/bin/dumb-init", "--", "/start.sh"]
+    networks: [default, proxy]
+    volumes:
+      - ${ZIM_DIR:?set ZIM_DIR in homelab.env}:/zim:ro
+      - ./data:/library
+      - ./start.sh:/start.sh:ro
+    healthcheck:
+      test: wget -q -O /dev/null http://localhost:8080/ || exit 1
+      start_period: 60s # a large library takes a while to index
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  proxy:
+    external: true

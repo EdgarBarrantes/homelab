@@ -1,0 +1,4 @@
+- Kiwix:
+    icon: kiwix.png
+    href: https://wiki.${DOMAIN}
+    description: Offline Wikipedia and library (on demand, ./lab up kiwix)

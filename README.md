@@ -34,6 +34,7 @@ itself.
 | `vikunja` | Tasks and projects: lists, kanban, Gantt, calendar, CalDAV | `tasks.` | full |
 | `wger` | Workout log, body weight, exercise and nutrition databases, with a mobile app | `gym.` | full |
 | `backrest` | Browse and restore the nightly backups | `backrest.` | standard |
+| `kiwix` | Offline Wikipedia and other [ZIM archives](https://library.kiwix.org) (Stack Exchange, Gutenberg, iFixit...), with full-text search | `wiki.` | full |
 | `ollama` | Local LLMs with the Open WebUI chat | `ai.` | full |
 | `speech` | Speech to text and text to speech (OpenAI API, Home Assistant) | `speech.` | full |
 | `immich-public-proxy` | Public Immich share links, nothing else | public: `share.` | full |
@@ -142,7 +143,8 @@ Moving data into a machine you've already set up: `./lab restore`.
 ```
 lab ls                      all stacks, on/off, with descriptions
 lab status                  running containers
-lab up [stack...]           (re)generate config and start
+lab up [stack...]           (re)generate config and start; on-demand stacks
+                            (kiwix) only when named, printing their address
 lab down | stop | restart [stack...]
 lab pause                   stop only heavy services (ML, OCR, LLMs)
 lab pause --all / resume    stop everything / start it again
@@ -180,7 +182,8 @@ stack that won't start, `--parallel` forces the fast way.
   rewrites it); `lab keys` lists them without showing values.
 - **`stacks/<name>/`**: `compose.yml` (all machine-specific values are
   `${VARIABLES}` from `homelab.env`), `stack.conf` (description, hostname,
-  needs, secrets, backup paths), `caddy.conf` (its route), `homepage.yaml`
+  needs, secrets, backup paths, `ON_DEMAND=yes` for a stack that only runs
+  when started by name), `caddy.conf` (its route), `homepage.yaml`
   (its tile), and optional overlays like `gpu.yml` that `lab` adds only when
   their switch is on.
 - **Generated, never edit**: `rendered/` (Caddy config, tunnel config,

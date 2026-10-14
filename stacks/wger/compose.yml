@@ -113,7 +113,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 300s
+      # First start syncs the exercise database from wger.de: 4-7 minutes.
+      start_period: 600s
     depends_on:
       db: {condition: service_healthy}
       cache: {condition: service_healthy}

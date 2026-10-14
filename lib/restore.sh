@@ -112,7 +112,7 @@ rs_rehome_env() {
   local k v n
   env_set "$HOMELAB_ENV" PUID "$(id -u)"
   env_set "$HOMELAB_ENV" PGID "$(id -g)"
-  for k in PHOTOS_DIR BOOKS_DIR BOOKS_IMPORT_DIR PAPERLESS_CONSUME_DIR LOCAL_DIR; do
+  for k in PHOTOS_DIR BOOKS_DIR BOOKS_IMPORT_DIR PAPERLESS_CONSUME_DIR ZIM_DIR LOCAL_DIR; do
     v="$(env_get "$HOMELAB_ENV" "$k")"; [[ -n "$v" ]] || continue
     n="$(rs_rehome_path "$v")"
     [[ "$n" == "$v" ]] || { env_set "$HOMELAB_ENV" "$k" "$n"; warn "$k: $v -> $n (this machine's home)"; }
@@ -330,7 +330,8 @@ rs_restore_stack() {
         ;;
     esac
   done
-  info "Starting $s"; dc "$s" up -d >/dev/null 2>&1
+  if is_on_demand "$s"; then info "$s runs on demand: not started (./lab up $s)"
+  else info "Starting $s"; dc "$s" up -d >/dev/null 2>&1; fi
 }
 
 # lab backup drill [--from primary|offsite|both] [--files N]: prove the

@@ -24,7 +24,7 @@ NVIDIA GPU; a mini PC with 16 GB runs the `standard` profile fine.
 |---|---|---|---|
 | minimal | caddy, homepage, glances | 1 GB | 3 GB |
 | standard | + immich, paperless, actual, gokapi, calibre-web, backrest | 8 GB | 30 GB |
-| full | + ollama, speech, immich-public-proxy | 16 GB+ | 60 GB |
+| full | + ollama, speech, immich-public-proxy, kiwix | 16 GB+ | 60 GB |
 
 Plus room for your own data (photos, documents, models).
 
