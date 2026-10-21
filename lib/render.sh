@@ -68,6 +68,12 @@ stack_env() {
         env_set "$env" JWT_PRIVATE_KEY "$(sed -n 's/^PRIVATE=//p' <<<"$pair")"
         env_set "$env" JWT_PUBLIC_KEY "$(sed -n 's/^PUBLIC=//p' <<<"$pair")"
       fi ;;
+    netalertx)
+      # New devices are pushed with the homelab's ntfy token.
+      if is_enabled ntfy; then
+        stack_env ntfy
+        env_set "$env" NTFY_PUBLISH_TOKEN "$(env_get "$STACKS_DIR/ntfy/.env" NTFY_PUBLISH_TOKEN)"
+      fi ;;
     dawarich)
       # Rails wants a long secret_key_base.
       [[ -n "$(env_get "$env" SECRET_KEY_BASE)" ]] || env_set "$env" SECRET_KEY_BASE "$(openssl rand -hex 64)" ;;

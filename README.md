@@ -36,6 +36,7 @@ itself.
 | `backrest` | Browse and restore the nightly backups | `backrest.` | standard |
 | `kiwix` | Offline Wikipedia and other [ZIM archives](https://library.kiwix.org) (Stack Exchange, Gutenberg, iFixit...), with full-text search | `wiki.` | full |
 | `kismet` | [Kismet](https://www.kismetwireless.net) Wi-Fi survey and intrusion alerts, on a spare USB Wi-Fi adapter, on demand | `kismet.` | (opt-in) |
+| `netalertx` | [NetAlertX](https://github.com/netalertx/NetAlertX): every device on the LAN, with a push when a new one appears | `devices.` | full |
 | `ollama` | Local LLMs with the Open WebUI chat | `ai.` | full |
 | `speech` | Speech to text and text to speech (OpenAI API, Home Assistant) | `speech.` | full |
 | `immich-public-proxy` | Public Immich share links, nothing else | public: `share.` | full |

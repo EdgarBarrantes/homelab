@@ -13,7 +13,7 @@ tests/vm.sh suite    # the same without the restore and rebuild drills
 tests/vm.sh down     # delete the VM
 ```
 
-Steps: `up` (VM, 4 CPU / 12 GiB / 40 GiB), `preload` (cached images, see
+Steps: `up` (VM, 4 CPU / 14 GiB / 40 GiB), `preload` (cached images, see
 below), `install`, `verify` (`lab doctor` inside, HTTPS to every installed
 hostname from the host against Caddy's internal CA, the overlay, each
 stack's own checks, one backup run), `rerun`, `restore` (seed data, real

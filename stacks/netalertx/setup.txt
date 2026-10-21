@@ -1,0 +1,7 @@
+NetAlertX (https://devices.${DOMAIN}, ./lab secret netalertx NETALERTX_PASSWORD):
+  lists every device on the LAN (ARP scans of NET_IFACE's subnet every 5 minutes)
+  and pushes new ones to ntfy (homelab-alerts) when the ntfy stack is enabled. The
+  first scans report every device already there as new: name them in the UI
+  (Devices), and tick "Alert down" on the ones you want to hear about when they go
+  missing. Its login, scanned subnet and notifications come from the homelab and
+  are re-applied at every start (settings.py); change others in its UI.

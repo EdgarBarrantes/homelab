@@ -1,0 +1,4 @@
+- NetAlertX:
+    icon: netalertx.png
+    href: https://devices.${DOMAIN}
+    description: Devices on the LAN, new-device alerts

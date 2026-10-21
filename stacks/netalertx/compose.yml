@@ -1,0 +1,44 @@
+name: netalertx
+
+# NetAlertX: which devices are on the LAN and since when, with a push when a
+# new one appears (ARP scans every 5 minutes, names from DNS/mDNS/NetBIOS).
+# network_mode: host is needed for ARP scans (a bridge only sees its own
+# segment), so it can't join `proxy`: Caddy reaches the UI at
+# host.docker.internal. start.sh keeps the UI on Docker's host gateway and
+# sitecustomize.py the API on 127.0.0.1 (the UI proxies it), so nothing
+# listens on the LAN; settings.py re-applies the login, the scanned subnet
+# and the ntfy pushes at every start.
+services:
+  netalertx:
+    image: ghcr.io/netalertx/netalertx:26.10.0
+    container_name: netalertx
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    # ARP scans and raw sockets; the root entrypoint chowns /data and /tmp
+    # and then drops to its own user (upstream's baseline).
+    cap_add: [NET_ADMIN, NET_RAW, NET_BIND_SERVICE, CHOWN, SETUID, SETGID]
+    entrypoint: ["/bin/sh", "/lab-start.sh"]
+    environment:
+      NET_IFACE: ${NET_IFACE}
+      DOMAIN: ${DOMAIN}
+      NETALERTX_PASSWORD: ${NETALERTX_PASSWORD}
+      NTFY_PUBLISH_TOKEN: ${NTFY_PUBLISH_TOKEN:-}
+      NETALERTX_API_HOST: 127.0.0.1
+      PORT: "20211"
+      TZ: ${TZ}
+    volumes:
+      - ./data:/data
+      - ./start.sh:/lab-start.sh:ro
+      - ./sitecustomize.py:/app/sitecustomize.py:ro
+      - ./settings.py:/entrypoint.d/38-lab-settings.py:ro
+    tmpfs:
+      - /tmp:uid=20211,gid=20211,mode=1700,noexec,nosuid,nodev
+    healthcheck:
+      # The image's check, told where start.sh put the UI.
+      test: LISTEN_ADDR="$$(sh /lab-start.sh addr)" /services/healthcheck.sh
+      start_period: 60s
+      interval: 30s
+      timeout: 15s
+      retries: 3
