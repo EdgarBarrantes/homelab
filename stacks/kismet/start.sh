@@ -38,8 +38,11 @@ cleanup() {
 mkdir -p /root/.kismet
 umask 077
 printf 'httpd_username=kismet\nhttpd_password=%s\n' "$KISMET_PASSWORD" > /root/.kismet/kismet_httpd.conf
+# randomized_hopping off: Kismet's shuffle steps 4 channels at a time, so a
+# list whose length is even (38 channels, say) only ever visits half of it.
 cat > /etc/kismet/kismet_site.conf <<EOF
 remote_capture_enabled=false
+randomized_hopping=false
 log_prefix=/data
 kis_log_data_packets=false$sources
 EOF
