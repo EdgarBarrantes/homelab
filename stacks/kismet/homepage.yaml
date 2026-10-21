@@ -1,0 +1,4 @@
+- Kismet:
+    icon: mdi-wifi-marker
+    href: https://kismet.${DOMAIN}
+    description: Wi-Fi survey (on demand, ./lab up kismet)

@@ -1,0 +1,59 @@
+name: kismet
+
+# Kismet: a Wi-Fi survey and intrusion alerts (which networks and devices
+# are around, on which channels and how strong; deauth floods, spoofed
+# access points...). It needs a USB Wi-Fi adapter of its own that can do
+# monitor mode (KISMET_SOURCE in .env).
+# Kismet runs in its own network namespace, like any container: the only
+# Wi-Fi it can see is the adapter kismet-radio hands it, so neither a wrong
+# setting nor its web UI can touch the interfaces this machine is online
+# through. kismet-radio (host network and PIDs, NET_ADMIN) moves that
+# adapter into Kismet's namespace, and only a USB adapter this machine
+# isn't online through: a built-in card is always refused. When Kismet
+# stops, the kernel gives the adapter back to the host.
+# On demand (stack.conf): ./lab up kismet to start it, ./lab down kismet to stop.
+services:
+  kismet:
+    build: .
+    image: local/kismet:2025-09-R1
+    container_name: kismet
+    restart: unless-stopped
+    networks: [default, proxy]
+    cap_add: [NET_ADMIN, NET_RAW] # monitor mode and capture, inside its own namespace
+    command: ["/bin/sh", "/start.sh"]
+    stop_grace_period: 30s # time to close the capture and remove its monitor interface
+    environment:
+      KISMET_PASSWORD: ${KISMET_PASSWORD}
+      KISMET_SOURCE: ${KISMET_SOURCE:-}
+      KISMET_CHANNELS: ${KISMET_CHANNELS:-}
+      KISMET_KEEP_DAYS: ${KISMET_KEEP_DAYS:-30}
+      LAB_KISMET_RADIO: "1" # how kismet-radio finds this container's processes
+      TZ: ${TZ}
+    volumes:
+      - ./data:/data
+      - ./start.sh:/start.sh:ro
+    healthcheck:
+      test: curl -fs -o /dev/null -u "kismet:$$KISMET_PASSWORD" http://localhost:2501/system/status.json || exit 1
+      start_period: 90s # includes waiting for the adapter
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  kismet-radio:
+    build: . # same image (iw, ip); built, not pulled
+    image: local/kismet:2025-09-R1
+    container_name: kismet-radio
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    cap_add: [NET_ADMIN]
+    command: ["/bin/sh", "/radio.sh"]
+    environment:
+      KISMET_SOURCE: ${KISMET_SOURCE:-}
+    volumes:
+      - ./radio.sh:/radio.sh:ro
+    depends_on: [kismet]
+
+networks:
+  proxy:
+    external: true

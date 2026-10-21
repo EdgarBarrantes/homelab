@@ -1,0 +1,9 @@
+Kismet (https://kismet.${DOMAIN}, user "kismet", ./lab secret kismet KISMET_PASSWORD):
+  a Wi-Fi survey on a spare USB Wi-Fi adapter that can do monitor mode (MediaTek
+  MT7612U/MT7921AU or Realtek RTL8821AU work with the kernel's own drivers). Name it
+  with ./lab config kismet KISMET_SOURCE <interface> (ip -br link). Kismet only ever
+  sees that adapter: built-in cards and one this machine is online through are
+  refused. It runs on demand: ./lab up kismet starts it (plain ./lab up doesn't),
+  ./lab down kismet stops it and gives the adapter back. Logs (./data, no data
+  frames) are kept KISMET_KEEP_DAYS days and not backed up. They also list
+  neighbours' networks and devices: keep them private.

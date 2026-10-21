@@ -35,6 +35,7 @@ itself.
 | `wger` | Workout log, body weight, exercise and nutrition databases, with a mobile app | `gym.` | full |
 | `backrest` | Browse and restore the nightly backups | `backrest.` | standard |
 | `kiwix` | Offline Wikipedia and other [ZIM archives](https://library.kiwix.org) (Stack Exchange, Gutenberg, iFixit...), with full-text search | `wiki.` | full |
+| `kismet` | [Kismet](https://www.kismetwireless.net) Wi-Fi survey and intrusion alerts, on a spare USB Wi-Fi adapter, on demand | `kismet.` | (opt-in) |
 | `ollama` | Local LLMs with the Open WebUI chat | `ai.` | full |
 | `speech` | Speech to text and text to speech (OpenAI API, Home Assistant) | `speech.` | full |
 | `immich-public-proxy` | Public Immich share links, nothing else | public: `share.` | full |
@@ -144,7 +145,7 @@ Moving data into a machine you've already set up: `./lab restore`.
 lab ls                      all stacks, on/off, with descriptions
 lab status                  running containers
 lab up [stack...]           (re)generate config and start; on-demand stacks
-                            (kiwix) only when named, printing their address
+                            (kiwix, kismet) only when named, printing their address
 lab down | stop | restart [stack...]
 lab pause                   stop only heavy services (ML, OCR, LLMs)
 lab pause --all / resume    stop everything / start it again
