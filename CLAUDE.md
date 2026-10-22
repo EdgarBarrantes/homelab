@@ -9,8 +9,10 @@ public: never commit real domains, IPs, names, paths or secrets.
 
 - `stacks/<name>/`: `compose.yml` (or Immich's untouched upstream
   `docker-compose.yml` + `docker-compose.override.yml`), `stack.conf`
-  (metadata read by lib/), `caddy.conf`, `homepage.yaml`, `setup.txt`,
-  optional overlays (`gpu.yml`, `ai.yml`) switched by a homelab.env value.
+  (metadata read by lib/, `GROUP` = its dashboard group), `caddy.conf`,
+  `homepage.yaml`, `setup.txt`, optional overlays (`gpu.yml`, `ai.yml`)
+  switched by a homelab.env value. Live charts go in `homepage.monitors.yaml`
+  (shown in the Monitors group); `*.gpu.yaml` tiles only with `GPU=yes`.
 - `lib/`: bash only (common, checks, wizard, render, doctor, remote).
   `render_all` must stay idempotent and never overwrite existing secrets.
 - Compose files use `${VAR}` from `homelab.env`; Caddy snippets use Caddy's

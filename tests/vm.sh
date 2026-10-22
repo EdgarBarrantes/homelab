@@ -346,6 +346,9 @@ verify() {
   ssh_vm 'curl -s -m 5 http://127.0.0.1:8091/' | grep -q 'overlay site ok' && echo "  top-level site + compose override: ok" || { echo "  top-level site: FAIL"; fails=$((fails + 1)); }
   ssh_vm 'grep -q "Overlay Tile" homelab/stacks/homepage/config/services.yaml && grep -q "^- Custom:" homelab/stacks/homepage/config/services.yaml' \
     && echo "  dashboard tiles: ok" || { echo "  dashboard tiles: FAIL"; fails=$((fails + 1)); }
+  # Live charts in Monitors, the stack's link tile in its own group.
+  ssh_vm "awk '/^- /{g=\$2} /CPU Usage:/{c=g} /- Glances:/{l=g} END{exit !(c==\"Monitors:\" && l==\"Infrastructure:\")}' homelab/stacks/homepage/config/services.yaml" \
+    && echo "  dashboard groups: ok" || { echo "  dashboard groups: FAIL"; fails=$((fails + 1)); }
   curl -s -m 10 --cacert "$STATE/ca.crt" --resolve "map.homelab.internal:443:$ip" https://map.homelab.internal/topology.md | grep -q overlay-marker \
     && echo "  map: ok" || { echo "  map: FAIL"; fails=$((fails + 1)); }
   ssh_vm 'grep -q "extra.example.test" homelab/rendered/cloudflared/config.yml' && echo "  tunnel entry: ok" || { echo "  tunnel entry: FAIL"; fails=$((fails + 1)); }

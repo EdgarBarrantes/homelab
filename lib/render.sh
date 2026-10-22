@@ -2,7 +2,7 @@
 # Sourced by lab and install.sh (after common.sh). Safe to run any time:
 # it never overwrites an existing secret or anything under data/.
 
-HOMEPAGE_GROUPS=(Infrastructure Photos Documents AI Files Productivity Backups Home Finance)
+HOMEPAGE_GROUPS=(Monitors Home Library Personal AI Files Infrastructure)
 
 gen_secret() { openssl rand -hex 24; }
 
@@ -158,7 +158,7 @@ render_topology() {
 homepage_items() { render_template < "$1" | sed 's/^/    /'; }
 
 render_homepage() {
-  local cfg="$STACKS_DIR/homepage/config" g s f body out
+  local cfg="$STACKS_DIR/homepage/config" g s f body out kind
   mkdir -p "$cfg"
   render_template < "$STACKS_DIR/homepage/settings.yaml" > "$cfg/settings.yaml"
   cp "$STACKS_DIR/homepage/custom.css" "$cfg/custom.css"
@@ -167,10 +167,14 @@ render_homepage() {
   for g in "${HOMEPAGE_GROUPS[@]}"; do
     body=""
     for s in $(enabled_stacks); do
-      [[ "$(stack_meta "$s" GROUP)" == "$g" ]] || continue
-      f="$STACKS_DIR/$s/homepage.yaml"
+      # Live charts (homepage.monitors*.yaml) go in Monitors, whatever the
+      # stack's own group; its other tiles stay in that group.
+      kind=""
+      [[ "$g" == Monitors ]] && kind=".monitors"
+      [[ -z "$kind" && "$(stack_meta "$s" GROUP)" != "$g" ]] && continue
+      f="$STACKS_DIR/$s/homepage$kind.yaml"
       [[ -f "$f" ]] && body+="$(homepage_items "$f")"$'\n'
-      f="$STACKS_DIR/$s/homepage.gpu.yaml"
+      f="$STACKS_DIR/$s/homepage$kind.gpu.yaml"
       [[ -f "$f" ]] && is_yes "${GPU:-no}" && body+="$(homepage_items "$f")"$'\n'
     done
     if [[ "$g" == Infrastructure ]]; then

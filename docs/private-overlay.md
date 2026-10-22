@@ -10,9 +10,9 @@ private git repo (mine also holds my personal notes and my real
 $LOCAL_DIR/
   topology.md               your real map (instead of the example)
   homepage/<Group>.yaml     extra dashboard tiles, appended to that group
-                            (Infrastructure, Photos, Documents, AI, Files,
-                            Backups, Home, Finance; any other name becomes
-                            a new group at the end)
+                            (Monitors, Home, Library, Personal, AI, Files,
+                            Infrastructure; any other name becomes a new
+                            group at the end)
   caddy/sites/*.conf        extra routes inside the *.$DOMAIN site
   caddy/*.caddy             extra top-level Caddy sites
   stacks/<stack>/*.yml      extra compose files for that stack
