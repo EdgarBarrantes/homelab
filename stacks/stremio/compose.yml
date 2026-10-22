@@ -1,0 +1,39 @@
+name: stremio
+
+# Stremio's streaming server and web player in one container (nginx on 8080
+# in front of the server on 11470), so the browser gets both from one HTTPS
+# name. Sign in with a Stremio account in the web player; add-ons and the
+# library live in that account. Cache and server settings in ./data (cache
+# size: Settings > Streaming in the player).
+# Optional, off unless their key is set in .env: vpn.yml (all of Stremio's
+# traffic through a VPN, VPN_PROVIDER) and vaapi.yml (hardware transcoding,
+# VAAPI_DEVICE).
+# On demand (stack.conf): ./lab up stremio to start it, ./lab down stremio to stop.
+services:
+  stremio:
+    image: tsaridas/stremio-docker:v1.3.14
+    container_name: stremio
+    restart: unless-stopped
+    # Runs as root: its start script patches the server in place.
+    environment:
+      TZ: ${TZ}
+      AUTO_SERVER_URL: 1 # the player uses the address it was opened at
+      CASTING_DISABLED: 1 # casting needs host networking (SSDP)
+      DISABLE_CACHING: ${STREMIO_NO_CACHE:-}
+    # No search domain: the engine passes some peer addresses on unparsed
+    # (e.g. "[2a02"), and the resolver would append the LAN's search domain
+    # and send them to the upstream DNS.
+    dns_search: .
+    networks: [default, proxy]
+    volumes:
+      - ./data:/root/.stremio-server
+    healthcheck:
+      test: wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1
+      start_period: 30s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  proxy:
+    external: true

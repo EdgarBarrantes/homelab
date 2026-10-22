@@ -1,0 +1,4 @@
+- Stremio:
+    icon: stremio.png
+    href: https://stremio.${DOMAIN}
+    description: Streaming (on demand, ./lab up stremio)

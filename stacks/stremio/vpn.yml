@@ -1,0 +1,35 @@
+# On when VPN_PROVIDER is set in .env: Stremio shares gluetun's network, so
+# every peer and add-on connection leaves through the VPN, and nothing at all
+# when the tunnel is down (gluetun's firewall). Caddy reaches the player through
+# gluetun, which answers to the name "stremio" on the proxy network.
+# Providers and their settings: https://github.com/qdm12/gluetun-wiki
+services:
+  vpn:
+    image: qmcgaw/gluetun:v3.41.3
+    container_name: stremio-vpn
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
+    environment:
+      TZ: ${TZ}
+      VPN_SERVICE_PROVIDER: ${VPN_PROVIDER}
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${VPN_WIREGUARD_KEY:?set VPN_WIREGUARD_KEY (./lab config stremio VPN_WIREGUARD_KEY)}
+      SERVER_COUNTRIES: ${VPN_COUNTRIES:-}
+      VPN_PORT_FORWARDING: ${VPN_PORT_FORWARDING:-off}
+      PORT_FORWARD_ONLY: ${VPN_PORT_FORWARDING:-off}
+    dns_search: .
+    networks:
+      default:
+      proxy:
+        aliases: [stremio]
+    volumes:
+      - ./config/vpn:/gluetun
+
+  stremio:
+    network_mode: service:vpn
+    networks: !reset null
+    dns_search: !reset null
+    depends_on:
+      vpn:
+        condition: service_healthy

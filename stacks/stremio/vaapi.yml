@@ -1,0 +1,7 @@
+# On when VAAPI_DEVICE is set in .env: transcoding (formats the browser can't
+# play) on an Intel or AMD GPU through VA-API instead of the CPU. Stremio only
+# tries renderD128, so the chosen node is mapped there.
+services:
+  stremio:
+    devices:
+      - ${VAAPI_DEVICE}:/dev/dri/renderD128

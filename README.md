@@ -36,6 +36,7 @@ itself.
 | `backrest` | Browse and restore the nightly backups | `backrest.` | standard |
 | `kiwix` | Offline Wikipedia and other [ZIM archives](https://library.kiwix.org) (Stack Exchange, Gutenberg, iFixit...), with full-text search | `wiki.` | full |
 | `kismet` | [Kismet](https://www.kismetwireless.net) Wi-Fi survey and intrusion alerts, on a spare USB Wi-Fi adapter, on demand | `kismet.` | (opt-in) |
+| `stremio` | [Stremio](https://www.stremio.com) streaming server and web player, on demand; optional VPN for all its traffic ([gluetun](https://github.com/qdm12/gluetun)) and GPU transcoding | `stremio.` | (opt-in) |
 | `netalertx` | [NetAlertX](https://github.com/netalertx/NetAlertX): every device on the LAN, with a push when a new one appears | `devices.` | full |
 | `ollama` | Local LLMs with the Open WebUI chat | `ai.` | full |
 | `speech` | Speech to text and text to speech (OpenAI API, Home Assistant) | `speech.` | full |
@@ -146,7 +147,7 @@ Moving data into a machine you've already set up: `./lab restore`.
 lab ls                      all stacks, on/off, with descriptions
 lab status                  running containers
 lab up [stack...]           (re)generate config and start; on-demand stacks
-                            (kiwix, kismet) only when named, printing their address
+                            (kiwix, kismet, stremio) only when named, printing their address
 lab down | stop | restart [stack...]
 lab pause                   stop only heavy services (ML, OCR, LLMs)
 lab pause --all / resume    stop everything / start it again

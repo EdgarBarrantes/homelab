@@ -1,0 +1,7 @@
+Stremio (https://stremio.${DOMAIN}): the streaming server with the web player. Sign
+  in with a Stremio account; add-ons and the library come with it. It runs on demand:
+  ./lab up stremio starts it (plain ./lab up doesn't), ./lab down stremio stops it,
+  and with it every torrent it was seeding. Cache in ./data, size in the player
+  (Settings > Streaming); not backed up. Optional (./lab config stremio ...):
+  VAAPI_DEVICE for GPU transcoding, VPN_PROVIDER + VPN_WIREGUARD_KEY to send all of
+  its traffic through a VPN (see .env.example).
