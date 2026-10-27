@@ -23,6 +23,13 @@ answer from before the record existed; it expires within ~30 minutes. On
 the client, `*.home.example.com` must point at the server's Tailscale IP
 and Tailscale must be connected.
 
+**Homepage shows a service as down that works in the browser.** Its status
+checks go to Caddy by the site's name. `./lab render` makes every site name
+an alias of Caddy on the proxy network (`rendered/caddy/aliases.yml`), so
+the checks skip DNS; a new site's name joins after `./lab up caddy`. Until
+then its check looks the name up like any client, and a rate-limiting
+resolver can make it fail now and then.
+
 **Changed a route but Caddy serves the old one.** `./lab reload caddy`.
 (Caddy's config is mounted as a directory for exactly this reason: single
 bind-mounted files keep the old inode after editors save them atomically,
