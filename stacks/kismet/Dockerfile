@@ -3,7 +3,7 @@
 # exports), plus iw/ip for start.sh and radio.sh. Bump KISMET_VERSION with
 # the image tag in compose.yml.
 FROM ubuntu:24.04
-ARG KISMET_VERSION=2025-09-R1
+ARG KISMET_VERSION=2026-10-R1
 RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80retries \
  && apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

@@ -15,7 +15,7 @@ name: kismet
 services:
   kismet:
     build: .
-    image: local/kismet:2025-09-R1
+    image: local/kismet:2026-10-R1
     container_name: kismet
     restart: unless-stopped
     networks: [default, proxy]
@@ -41,7 +41,7 @@ services:
 
   kismet-radio:
     build: . # same image (iw, ip); built, not pulled
-    image: local/kismet:2025-09-R1
+    image: local/kismet:2026-10-R1
     container_name: kismet-radio
     restart: unless-stopped
     network_mode: host
