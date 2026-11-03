@@ -25,6 +25,46 @@ https_status() {
   curl "${args[@]}" "https://$1/" 2>/dev/null || true
 }
 
+# What the stacks don't cover, listed per machine in LOCAL_DIR/doctor.conf:
+# "unit NAME" (systemd --user), "system NAME" (system unit) or "container NAME".
+# A unit must be active; for a timer, its service's last run must not have failed.
+doctor_extras() {
+  local f="${LOCAL_DIR:-/nonexistent}/doctor.conf" kind name rest st svc res user_ok=1
+  [[ -f "$f" ]] || return 0
+  info "Extras ($f)"
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  if grep -qE '^[[:space:]]*unit[[:space:]]' "$f" && ! systemctl --user show-environment >/dev/null 2>&1; then
+    user_ok=0
+    _dwarn "user services not reachable (nobody logged in?): their checks skipped"
+  fi
+  while read -r kind name rest; do
+    [[ -z "$kind" || "$kind" == \#* ]] && continue
+    local ctl=(systemctl)
+    case "$kind" in
+      container)
+        st="$(container_state "$name")"
+        if [[ "$st" == running || "$st" == running/healthy ]]; then _dok "$name $st"
+        else _dbad "$name is $st" "docker logs $name"; fi
+        continue ;;
+      unit) ((user_ok)) || continue; ctl=(systemctl --user) ;;
+      system) ;;
+      *) _dwarn "doctor.conf: unknown kind '$kind' ($kind $name)"; continue ;;
+    esac
+    st="$("${ctl[@]}" is-active "$name" 2>/dev/null)"
+    if [[ "$st" != active ]]; then
+      _dbad "$name is ${st:-unknown}" "${ctl[*]} enable --now $name"; continue
+    fi
+    res=""
+    if [[ "$name" == *.timer ]]; then
+      svc="$("${ctl[@]}" show "$name" -p Unit --value 2>/dev/null)"
+      [[ -n "$svc" ]] && res="$("${ctl[@]}" show "$svc" -p Result --value 2>/dev/null)"
+    fi
+    if [[ -n "$res" && "$res" != success ]]; then
+      _dbad "$name: last run of $svc: $res" "journalctl ${ctl[1]:-} -u $svc -n 50"
+    else _dok "$name active"; fi
+  done < "$f"
+}
+
 run_doctor() {
   local s c st host code hosts=()
   DOC_BAD=0 DOC_WARN=0
@@ -108,6 +148,8 @@ run_doctor() {
       *) _dbad "last run: $res" "./lab backup log" ;;
     esac
   fi
+
+  doctor_extras
 
   echo
   if ((DOC_BAD)); then say "${C_RED}${DOC_BAD} problem(s)${C_0}, ${DOC_WARN} warning(s)."; return 1

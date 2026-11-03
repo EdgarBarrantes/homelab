@@ -154,7 +154,7 @@ lab pause --all / resume    stop everything / start it again
 lab logs <stack> [service]
 lab update [stack...]       pull new images and recreate
 lab enable | disable <stack>
-lab doctor                  containers healthy? routes answering? GPU? backups?
+lab doctor                  containers healthy? routes answering? GPU? backups? (+ LOCAL_DIR/doctor.conf)
 lab config <stack> <KEY>    set a value in a stack's .env (hidden input)
 lab secret <stack> <KEY>    print one (e.g. a generated admin password)
 lab keys [--long] [stack]   which keys each .env has, set or empty, what they're for

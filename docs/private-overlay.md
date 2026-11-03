@@ -19,6 +19,7 @@ $LOCAL_DIR/
   stacks/<stack>/.env.example  keys those files add to the stack's .env
                             (documented for `lab keys`, same format)
   cloudflared.yml           extra tunnel ingress entries
+  doctor.conf               extra things `./lab doctor` checks (below)
 ```
 
 Every file is optional. `${VAR}` from `homelab.env` works in all of them
@@ -79,3 +80,16 @@ and `cloudflared.yml` adds the hostname to the tunnel:
   - hostname: pages.${PUBLIC_DOMAIN}
     service: http://127.0.0.1:8090
 ```
+
+`doctor.conf` makes `./lab doctor` also check what lives outside the stacks
+(and so whatever reads its output, like a monitoring poll). One per line,
+`#` comments:
+
+```
+unit backup-mirror.timer      # systemd --user: active; a timer's last run not failed
+system cloudflared.service    # a system unit, same checks
+container my-extra-app        # a container started outside lab: running (or healthy)
+```
+
+User units are checked only while your user's systemd manager runs
+(you're logged in, or lingering is on); otherwise one warning says so.

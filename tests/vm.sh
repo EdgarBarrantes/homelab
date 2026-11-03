@@ -352,6 +352,8 @@ verify() {
   curl -s -m 10 --cacert "$STATE/ca.crt" --resolve "map.homelab.internal:443:$ip" https://map.homelab.internal/topology.md | grep -q overlay-marker \
     && echo "  map: ok" || { echo "  map: FAIL"; fails=$((fails + 1)); }
   ssh_vm 'grep -q "extra.example.test" homelab/rendered/cloudflared/config.yml' && echo "  tunnel entry: ok" || { echo "  tunnel entry: FAIL"; fails=$((fails + 1)); }
+  ssh_vm 'cd homelab && ./lab doctor 2>&1 | sed "s/\x1b\[[0-9;]*m//g"' | grep -A3 "^==> Extras" | grep -q "ssh.service active" \
+    && echo "  doctor.conf: ok" || { echo "  doctor.conf: FAIL"; fails=$((fails + 1)); }
   log "per-stack checks"
   for s in $stacks; do
     [[ -f "$HERE/stacks/$s.sh" ]] || continue
