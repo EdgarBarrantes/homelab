@@ -27,7 +27,7 @@ services:
       retries: 5
 
   webserver:
-    image: ghcr.io/paperless-ngx/paperless-ngx:3.1
+    image: ghcr.io/paperless-ngx/paperless-ngx:3.4
     container_name: paperless_webserver
     restart: unless-stopped
     # OCR and indexing are CPU-heavy.
