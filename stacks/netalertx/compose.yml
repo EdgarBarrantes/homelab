@@ -10,7 +10,7 @@ name: netalertx
 # and the ntfy pushes at every start.
 services:
   netalertx:
-    image: ghcr.io/netalertx/netalertx:26.10.0
+    image: ghcr.io/netalertx/netalertx:26.10.28
     container_name: netalertx
     restart: unless-stopped
     network_mode: host

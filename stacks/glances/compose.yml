@@ -10,7 +10,7 @@ name: glances
 # password (GLANCES_PASSWORD, generated; start.sh hands it to Glances).
 services:
   glances:
-    image: nicolargo/glances:ubuntu-4.5.7-full
+    image: nicolargo/glances:ubuntu-4.5.9-full
     container_name: glances
     restart: unless-stopped
     pid: host
