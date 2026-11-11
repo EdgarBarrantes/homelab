@@ -7,7 +7,7 @@ name: immich-public-proxy
 # https://github.com/alangrainger/immich-public-proxy
 services:
   immich-public-proxy:
-    image: alangrainger/immich-public-proxy:3
+    image: alangrainger/immich-public-proxy:4.1.2
     container_name: immich-public-proxy
     restart: unless-stopped
     environment:
@@ -22,8 +22,13 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     networks: [proxy]
+    # 4.x runs as an unprivileged user and writes nothing at runtime
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges]
     healthcheck:
-      test: curl -s http://localhost:3000/share/healthcheck -o /dev/null || exit 1
+      # -f: fail when the proxy can't reach Immich (it answers 503 then)
+      test: curl -sf -m 4 http://localhost:3000/share/healthcheck -o /dev/null || exit 1
       start_period: 10s
       timeout: 5s
 
