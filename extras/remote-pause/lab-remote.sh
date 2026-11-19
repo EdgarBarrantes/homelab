@@ -7,7 +7,8 @@
 #   status  "paused" when no heavy container runs, else "running"
 #   doctor  lab doctor as one JSON line: {"bad", "warn", "problems",
 #           "paused", "reboot", "reboot_since", "reboot_pkgs"}; while
-#           paused, the stopped heavy containers aren't counted as problems;
+#           paused, the stopped heavy containers aren't counted as problems,
+#           nor their stacks' web addresses answering 502-504;
 #           "reboot" is the OS's "reboot required" flag (set by updates)
 #   screen  {"brightness": 0-100, "volume": 0-100, "muted": bool} of the
 #           desktop session (null when nobody is logged in)
@@ -47,11 +48,20 @@ case "$cmd" in
     "$ROOT/lab" "$cmd" >> "$LOG" 2>&1 ;;
   status) ;;
   doctor)
-    skip=""
-    [ -z "$(heavy)" ] && skip="$(docker ps -a --filter label=lab.tier=heavy --format '{{.Names}}')"
-    { "$ROOT/lab" doctor 2>&1 || true; } | sed 's/\x1b\[[0-9;]*m//g' | SKIP="$skip" python3 -c '
-import json, os, sys
+    skip="" hosts=""
+    if [ -z "$(heavy)" ]; then
+      skip="$(docker ps -a --filter label=lab.tier=heavy --format '{{.Names}}')"
+      # their stacks' web addresses answer 502-504 while paused: not a problem either
+      for p in $(docker ps -a --filter label=lab.tier=heavy --format '{{.Label "com.docker.compose.project"}}' | sort -u); do
+        h="$(sed -n "s/^HOST=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$ROOT/stacks/$p/stack.conf" 2>/dev/null)"
+        [ -n "$h" ] && hosts="$hosts $h"
+      done
+    fi
+    { "$ROOT/lab" doctor 2>&1 || true; } | sed 's/\x1b\[[0-9;]*m//g' | SKIP="$skip" HOSTS="$hosts" python3 -c '
+import json, os, re, sys
 skip = [n for n in os.environ["SKIP"].split() if n]
+hosts = [h for h in os.environ["HOSTS"].split() if h]
+down = re.compile(r"https://([^./ ]+)\.\S* -> 50[234]\b")
 bad, warn = [], []
 lines = sys.stdin.read().splitlines()
 if not any(l.startswith("==>") for l in lines):  # doctor itself did not run
@@ -60,6 +70,9 @@ if not any(l.startswith("==>") for l in lines):  # doctor itself did not run
 for line in lines:
     t = line.strip()
     if t[:1] not in ("\u2718", "!") or any(n in t for n in skip):
+        continue
+    m = down.search(t)
+    if m and m.group(1) in hosts:
         continue
     (bad if t[0] == "\u2718" else warn).append(t[1:].strip())
 flag = "/var/run/reboot-required"
