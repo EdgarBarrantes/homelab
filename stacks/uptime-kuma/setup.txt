@@ -1,0 +1,3 @@
+Uptime Kuma (https://uptime.${DOMAIN}): the first visit asks for an account. Use
+  the name "admin" and the password from: ./lab secret uptime-kuma UPTIME_KUMA_PASSWORD
+  Then add a notification (Settings > Notifications) and the monitors.

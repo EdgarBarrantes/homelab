@@ -37,6 +37,7 @@ itself.
 | `kiwix` | Offline Wikipedia and other [ZIM archives](https://library.kiwix.org) (Stack Exchange, Gutenberg, iFixit...), with full-text search | `wiki.` | full |
 | `kismet` | [Kismet](https://www.kismetwireless.net) Wi-Fi survey and intrusion alerts, on a spare USB Wi-Fi adapter, on demand | `kismet.` | (opt-in) |
 | `stremio` | [Stremio](https://www.stremio.com) streaming server and web player, on demand; optional VPN for all its traffic ([gluetun](https://github.com/qdm12/gluetun)) and GPU transcoding | `stremio.` | (opt-in) |
+| `uptime-kuma` | [Uptime Kuma](https://github.com/louislam/uptime-kuma): uptime checks of sites and servers that run elsewhere, with alerts | `uptime.` | full |
 | `netalertx` | [NetAlertX](https://github.com/netalertx/NetAlertX): every device on the LAN, with a push when a new one appears | `devices.` | full |
 | `ollama` | Local LLMs with the Open WebUI chat | `ai.` | full |
 | `speech` | Speech to text and text to speech (OpenAI API, Home Assistant) | `speech.` | full |

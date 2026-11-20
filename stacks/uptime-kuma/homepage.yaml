@@ -1,0 +1,5 @@
+- Uptime Kuma:
+    icon: uptime-kuma.png
+    href: https://uptime.${DOMAIN}/
+    siteMonitor: https://uptime.${DOMAIN}/
+    description: Uptime checks of sites elsewhere
